@@ -270,7 +270,7 @@ export default function AdminTransactionsPage() {
   }
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="admin-page space-y-6 pb-8">
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white px-4 py-3.5 shadow-sm sm:px-5">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-dark text-accent shadow-sm ring-4 ring-primary-dark/10">
@@ -603,12 +603,12 @@ export default function AdminTransactionsPage() {
       {/* Edit modal */}
       {editTx ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-[2px]"
+          className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-gray-900/50 p-3 backdrop-blur-[2px] sm:items-center sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-tx-title"
         >
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+          <div className="w-full max-w-[min(100%,32rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
             <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
               <div>
                 <h2 id="edit-tx-title" className="text-lg font-semibold text-gray-900">

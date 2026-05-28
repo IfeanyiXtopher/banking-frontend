@@ -163,14 +163,14 @@ function AdminModal({
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]"
+      className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 backdrop-blur-[2px] sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_24px_48px_-12px_rgba(21,42,30,0.2)]">
+      <div className="flex max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,32rem)] flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_24px_48px_-12px_rgba(21,42,30,0.2)]">
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-gray-50/90 via-white to-white px-5 py-4">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-dark text-accent shadow-sm ring-4 ring-primary-dark/10">
@@ -505,7 +505,7 @@ export default function AdminUsersPage() {
   const isStaffUser = (role: string) => role !== 'CUSTOMER'
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="admin-page space-y-6 pb-8">
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white px-4 py-3.5 shadow-sm sm:px-5">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-dark text-accent shadow-sm ring-4 ring-primary-dark/10">

@@ -368,7 +368,7 @@ export default function AdminFeesPage() {
   }
 
   const renderComplianceTable = (rows: ComplianceFeeLineRow[], showUserColumn: boolean) => (
-    <div className="overflow-x-auto -mx-4 sm:-mx-5">
+    <div className="admin-table-scroll">
       <table className="w-full min-w-[960px] text-sm">
         <thead>
           <tr className="border-b border-gray-200/80 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500">
@@ -463,7 +463,7 @@ export default function AdminFeesPage() {
   const errDetail = (feesQuery.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="admin-page space-y-6 pb-8">
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white px-4 py-3.5 shadow-sm sm:px-5">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-dark text-accent shadow-sm ring-4 ring-primary-dark/10">
@@ -504,7 +504,7 @@ export default function AdminFeesPage() {
             <Spinner />
           </div>
         ) : (
-          <div className="overflow-x-auto -mx-4 sm:-mx-5">
+          <div className="admin-table-scroll">
             <table className="w-full min-w-[880px] text-sm">
               <thead>
                 <tr className="border-b border-gray-200/80 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500">
@@ -677,8 +677,8 @@ export default function AdminFeesPage() {
       </SectionPanel>
 
       {editingFee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card max-h-[90vh] w-full max-w-md overflow-y-auto shadow-xl">
+        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
             <h3 className="font-semibold text-gray-900">Edit {editingFee.fee_type.replace(/_/g, ' ')}</h3>
             <div className="mt-4 space-y-3">
               <div>
@@ -769,8 +769,8 @@ export default function AdminFeesPage() {
       )}
 
       {addingFee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card max-h-[90vh] w-full max-w-md overflow-y-auto shadow-xl">
+        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
             <h3 className="font-semibold text-gray-900">Add transaction fee</h3>
             <p className="mt-1 text-xs text-gray-500">Each fee type can only exist once. Use transfer types for bank-to-bank moves.</p>
             <div className="mt-4 space-y-3">
@@ -872,8 +872,8 @@ export default function AdminFeesPage() {
       )}
 
       {editingCompliance && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card max-h-[90vh] w-full max-w-md overflow-y-auto shadow-xl">
+        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
             <h3 className="font-semibold text-gray-900">Edit fee line</h3>
             <p className="mt-1 text-xs text-gray-500">{editingCompliance.name}</p>
             <div className="mt-4 space-y-3">
@@ -1010,8 +1010,8 @@ export default function AdminFeesPage() {
       )}
 
       {addingCompliance && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card max-h-[90vh] w-full max-w-md overflow-y-auto shadow-xl">
+        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
             <h3 className="font-semibold text-gray-900">Add compliance fee line</h3>
             <p className="mt-1 text-xs text-gray-500">
               Code must be unique within global lines or within the chosen customer. Leave code blank to generate from the name.
@@ -1031,8 +1031,8 @@ export default function AdminFeesPage() {
                       }))
                     }
                   >
-                    <option value="global">Global — all customers without custom lines</option>
-                    <option value="user">Per-user — replaces global for one customer</option>
+                    <option value="global">Global (all customers)</option>
+                    <option value="user">Per customer (overrides global)</option>
                   </select>
                 </div>
               ) : null}
@@ -1172,8 +1172,8 @@ export default function AdminFeesPage() {
       )}
 
       {editingRate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card w-full max-w-sm shadow-xl">
+        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+          <div className="card w-full max-w-[min(100%,24rem)] p-4 shadow-xl sm:p-6">
             <h3 className="font-semibold text-gray-900">
               Edit rate {editingRate.from_currency}/{editingRate.to_currency}
             </h3>

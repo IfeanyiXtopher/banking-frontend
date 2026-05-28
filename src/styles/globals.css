@@ -86,6 +86,18 @@
     @apply bg-white rounded-2xl shadow-card p-6;
   }
 
+  .admin-page {
+    @apply min-w-0 max-w-full;
+  }
+
+  .admin-table-scroll {
+    @apply -mx-3 overflow-x-auto px-3 sm:-mx-0 sm:px-0;
+  }
+
+  .admin-modal-backdrop .card {
+    @apply p-4 sm:p-6;
+  }
+
   /** Settings sub-pages: subtle depth, crisp border */
   .settings-panel {
     @apply overflow-hidden rounded-2xl border border-gray-200/85 bg-white;

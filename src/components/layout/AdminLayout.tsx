@@ -49,7 +49,7 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="flex min-h-screen bg-surface">
+    <div className="flex min-h-screen min-w-0 bg-surface">
       <button
         type="button"
         className={cn(
@@ -124,7 +124,7 @@ export default function AdminLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Header onOpenMobileMenu={() => setMobileNavOpen(true)} />
-        <main className="px-4 py-4 sm:p-6">
+        <main className="min-w-0 overflow-x-hidden px-3 py-4 sm:px-6 sm:py-6">
           <Outlet />
         </main>
       </div>

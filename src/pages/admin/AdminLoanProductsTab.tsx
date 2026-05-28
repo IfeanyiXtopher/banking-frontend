@@ -266,8 +266,8 @@ export default function AdminLoanProductsTab() {
       </div>
 
       {editorOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
-          <div className="card my-8 w-full max-w-2xl max-h-[min(92vh,800px)] overflow-y-auto">
+        <div className="admin-modal-backdrop fixed inset-0 z-[90] flex items-end justify-center overflow-y-auto bg-black/50 p-3 sm:items-center sm:p-4">
+          <div className="card my-4 w-full max-w-[min(100%,42rem)] max-h-[min(92dvh,800px)] overflow-y-auto p-4 sm:my-8 sm:p-6">
             <h2 className="text-lg font-bold text-gray-900">{editing ? 'Edit loan product' : 'New loan product'}</h2>
             <p className="mt-1 text-xs text-gray-500">
               Fields match the customer Loans catalog: hero image, tagline, rates, limits, and full description.
