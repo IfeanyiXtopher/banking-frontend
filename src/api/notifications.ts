@@ -9,13 +9,17 @@ export type AppNotification = {
   sent_at: string
 }
 
-/** OTP / verification codes are email-only and must not appear in the bell. */
-const IN_APP_EXCLUDED_EVENT_TYPES = new Set(['MFA_OTP'])
+const IN_APP_EVENT_TYPES = new Set([
+  'DEPOSIT',
+  'LOAN_APPROVED',
+  'COMPLIANCE_OTP_SENT',
+  'COMPLIANCE_PAYMENT_CONFIRMED',
+])
 
 export async function fetchNotificationList(): Promise<AppNotification[]> {
   const { data } = await apiClient.get<{ results?: AppNotification[] } | AppNotification[]>('/api/notifications/')
   const list = Array.isArray(data) ? data : (data.results ?? [])
-  return list.filter((n) => !IN_APP_EXCLUDED_EVENT_TYPES.has(n.event_type))
+  return list.filter((n) => IN_APP_EVENT_TYPES.has(n.event_type))
 }
 
 export const notificationsApi = {

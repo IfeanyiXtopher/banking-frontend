@@ -26,9 +26,11 @@ export function useWebSocket() {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'notification') {
-          if (data.notification?.event_type === 'MFA_OTP') return
+          const n = data.notification
+          if (!n?.event_type || n.event_type === 'MFA_OTP') return
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-          toast(data.notification.subject, { icon: '🔔' })
+          const message = [n.subject, n.body].filter(Boolean).join(' — ')
+          toast(message || 'New notification', { icon: '🔔', duration: 5000 })
         }
         if (data.type === 'balance_update') {
           // Trigger account refetch via query invalidation

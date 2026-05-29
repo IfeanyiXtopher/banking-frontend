@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Pencil, Plus, Settings, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Settings, Trash2, Bitcoin, Landmark } from 'lucide-react'
 import { adminApi } from '@/api/admin'
 import { useAuthStore } from '@/store/authStore'
 import { StyledSelect } from '@/components/forms/StyledSelect'
@@ -146,8 +146,8 @@ function emptyCompliancePaymentFields(): Pick<
   | 'crypto_usdt_bep20'
 > {
   return {
-    payment_crypto_enabled: true,
-    payment_wire_enabled: true,
+    payment_crypto_enabled: false,
+    payment_wire_enabled: false,
     wire_beneficiary_name: '',
     wire_bank_name: '',
     wire_swift_bic: '',
@@ -202,6 +202,228 @@ function pctDisplay(percentage: string | null | undefined): string {
   const n = parseFloat(String(percentage ?? '0'))
   if (Number.isNaN(n)) return '0.00'
   return (n * 100).toFixed(2)
+}
+
+type ComplianceExternalPaymentProps = {
+  form: ComplianceFormState
+  setForm: Dispatch<SetStateAction<ComplianceFormState>>
+}
+
+function ComplianceExternalPaymentSection({ form, setForm }: ComplianceExternalPaymentProps) {
+  const patch = (fields: Partial<ComplianceFormState>) => setForm((s) => ({ ...s, ...fields }))
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-xs font-semibold text-gray-900">External payment</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+          Customers pay this fee outside SafaPay. Turn on one or both methods below and complete only the section(s)
+          you enable.
+        </p>
+      </div>
+
+      <div
+        className={cn(
+          'overflow-hidden rounded-xl border transition-colors',
+          form.payment_crypto_enabled
+            ? 'border-amber-200/90 bg-amber-50/30'
+            : 'border-gray-200 bg-white',
+        )}
+      >
+        <label className="flex cursor-pointer items-start gap-3 px-4 py-3.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-dark focus:ring-primary-dark/30"
+            checked={form.payment_crypto_enabled}
+            onChange={(e) => patch({ payment_crypto_enabled: e.target.checked })}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <Bitcoin size={16} className="text-amber-700" aria-hidden />
+              Cryptocurrency
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-500">
+              Wallet addresses for BTC, ETH, and USDT. Add at least one address when enabled.
+            </span>
+          </span>
+        </label>
+
+        {form.payment_crypto_enabled ? (
+          <div className="space-y-4 border-t border-amber-200/70 px-4 pb-4 pt-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Bitcoin & Ethereum</p>
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">BTC address</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-xs"
+                    placeholder="bc1… or legacy address"
+                    value={form.crypto_btc_address}
+                    onChange={(e) => patch({ crypto_btc_address: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">ETH address</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-xs"
+                    placeholder="0x…"
+                    value={form.crypto_eth_address}
+                    onChange={(e) => patch({ crypto_eth_address: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">USDT by network</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-amber-950/80">
+                Use separate addresses per chain. Customers must send on the correct network.
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">USDT (ERC-20 · Ethereum)</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-xs"
+                    placeholder="0x…"
+                    value={form.crypto_usdt_erc20}
+                    onChange={(e) => patch({ crypto_usdt_erc20: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">USDT (TRC-20 · Tron)</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-xs"
+                    placeholder="T…"
+                    value={form.crypto_usdt_trc20}
+                    onChange={(e) => patch({ crypto_usdt_trc20: e.target.value })}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-gray-700">USDT (BEP-20 · BNB Chain)</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-xs"
+                    placeholder="0x…"
+                    value={form.crypto_usdt_bep20}
+                    onChange={(e) => patch({ crypto_usdt_bep20: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div
+        className={cn(
+          'overflow-hidden rounded-xl border transition-colors',
+          form.payment_wire_enabled ? 'border-sky-200/90 bg-sky-50/30' : 'border-gray-200 bg-white',
+        )}
+      >
+        <label className="flex cursor-pointer items-start gap-3 px-4 py-3.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-dark focus:ring-primary-dark/30"
+            checked={form.payment_wire_enabled}
+            onChange={(e) => patch({ payment_wire_enabled: e.target.checked })}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <Landmark size={16} className="text-sky-700" aria-hidden />
+              Bank wire (SWIFT)
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-500">
+              International wire instructions shown to the customer. SWIFT/BIC and IBAN or account number are required
+              when enabled.
+            </span>
+          </span>
+        </label>
+
+        {form.payment_wire_enabled ? (
+          <div className="space-y-4 border-t border-sky-200/70 px-4 pb-4 pt-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Beneficiary</p>
+              <div className="mt-2">
+                <label className="text-xs font-medium text-gray-700">Beneficiary name</label>
+                <input
+                  className="input-field mt-1 w-full text-sm"
+                  placeholder="Legal name on the account"
+                  value={form.wire_beneficiary_name}
+                  onChange={(e) => patch({ wire_beneficiary_name: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Receiving bank</p>
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-gray-700">Bank name</label>
+                  <input
+                    className="input-field mt-1 w-full text-sm"
+                    placeholder="Full legal bank name"
+                    value={form.wire_bank_name}
+                    onChange={(e) => patch({ wire_bank_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">SWIFT / BIC</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-sm uppercase"
+                    placeholder="8 or 11 characters"
+                    value={form.wire_swift_bic}
+                    onChange={(e) => patch({ wire_swift_bic: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Bank country</label>
+                  <input
+                    className="input-field mt-1 w-full text-sm uppercase"
+                    placeholder="ISO-2 e.g. GB"
+                    maxLength={2}
+                    value={form.wire_country}
+                    onChange={(e) => patch({ wire_country: e.target.value.toUpperCase() })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Account details</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-sky-950/80">
+                Provide IBAN, account number, or both — at least one is required for customer payment.
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium text-gray-700">IBAN</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-sm"
+                    placeholder="If applicable"
+                    value={form.wire_iban}
+                    onChange={(e) => patch({ wire_iban: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700">Account number</label>
+                  <input
+                    className="input-field mt-1 w-full font-mono text-sm"
+                    placeholder="If no IBAN"
+                    value={form.wire_account_number}
+                    onChange={(e) => patch({ wire_account_number: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {!form.payment_crypto_enabled && !form.payment_wire_enabled ? (
+        <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-950">
+          Enable cryptocurrency and/or bank wire above before customers can pay this fee externally.
+        </p>
+      ) : null}
+    </div>
+  )
 }
 
 function yesNoBadge(yes: boolean) {
@@ -624,131 +846,7 @@ export default function AdminFeesPage() {
           placeholder={DEFAULT_COMPLIANCE_CUSTOMER_MESSAGE}
         />
       </div>
-      <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4">
-        <p className="text-xs font-semibold text-gray-900">External payment</p>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
-          Customers pay compliance fees outside SafaPay. Enable at least one method and fill in the details required
-          for that method.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={complianceForm.payment_crypto_enabled}
-              onChange={(e) =>
-                setComplianceForm((s) => ({ ...s, payment_crypto_enabled: e.target.checked }))
-              }
-            />
-            Crypto
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={complianceForm.payment_wire_enabled}
-              onChange={(e) =>
-                setComplianceForm((s) => ({ ...s, payment_wire_enabled: e.target.checked }))
-              }
-            />
-            Wire transfer
-          </label>
-        </div>
-        {complianceForm.payment_crypto_enabled ? (
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="text-xs font-medium text-gray-700">BTC address</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-xs"
-                value={complianceForm.crypto_btc_address}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_btc_address: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">ETH address</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-xs"
-                value={complianceForm.crypto_eth_address}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_eth_address: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">USDT (ERC-20)</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-xs"
-                value={complianceForm.crypto_usdt_erc20}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_usdt_erc20: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">USDT (TRC-20)</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-xs"
-                value={complianceForm.crypto_usdt_trc20}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_usdt_trc20: e.target.value }))}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="text-xs font-medium text-gray-700">USDT (BEP-20)</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-xs"
-                value={complianceForm.crypto_usdt_bep20}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_usdt_bep20: e.target.value }))}
-              />
-            </div>
-          </div>
-        ) : null}
-        {complianceForm.payment_wire_enabled ? (
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="text-xs font-medium text-gray-700">Beneficiary name</label>
-              <input
-                className="input-field mt-1 w-full text-sm"
-                value={complianceForm.wire_beneficiary_name}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_beneficiary_name: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">Bank name</label>
-              <input
-                className="input-field mt-1 w-full text-sm"
-                value={complianceForm.wire_bank_name}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_bank_name: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">SWIFT / BIC</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-sm"
-                value={complianceForm.wire_swift_bic}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_swift_bic: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">IBAN</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-sm"
-                value={complianceForm.wire_iban}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_iban: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">Account number</label>
-              <input
-                className="input-field mt-1 w-full font-mono text-sm"
-                value={complianceForm.wire_account_number}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_account_number: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700">Country</label>
-              <input
-                className="input-field mt-1 w-full text-sm"
-                value={complianceForm.wire_country}
-                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_country: e.target.value }))}
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
+      <ComplianceExternalPaymentSection form={complianceForm} setForm={setComplianceForm} />
       <div>
         <label className="text-xs font-medium text-gray-700">
           {opts.codeOptional ? 'Code (optional)' : 'Code (slug, unique per scope)'}

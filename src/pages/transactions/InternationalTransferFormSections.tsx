@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form'
 import { Input } from '@/components/forms/Input'
 import { LocationCombobox } from '@/components/forms/LocationCombobox'
 import { selectShell, StyledSelect } from '@/components/forms/StyledSelect'
+import { cn } from '@/utils/cn'
 import {
   useCityOptions,
   useCountryOptions,
@@ -68,6 +71,21 @@ export default function InternationalTransferFormSections({
         )
       : null
 
+  const additionalDetailFields = [
+    'beneficiary_address_line2',
+    'beneficiary_region_state',
+    'beneficiary_bank_address_line1',
+    'intermediary_bank_name',
+    'intermediary_bank_bic',
+    'instructions_to_beneficiary_bank',
+  ] as const
+  const hasAdditionalErrors = additionalDetailFields.some((key) => errors[key]?.message)
+  const [additionalOpen, setAdditionalOpen] = useState(false)
+
+  useEffect(() => {
+    if (hasAdditionalErrors) setAdditionalOpen(true)
+  }, [hasAdditionalErrors])
+
   return (
     <div className="space-y-6 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 sm:p-5">
       <div>
@@ -75,7 +93,7 @@ export default function InternationalTransferFormSections({
           International transfer
         </p>
         <p className="mt-1 text-sm leading-relaxed text-emerald-950/85">
-          Beneficiary and bank details for your international payment. Correspondent fields are under Advanced options.
+          Beneficiary and bank details for your international payment. Expand Additional details only if your bank requires extra fields.
         </p>
       </div>
 
@@ -344,45 +362,66 @@ export default function InternationalTransferFormSections({
       </div>
 
       {/* Correspondent & extra details */}
-      <div className="space-y-3">
-        <SectionTitle hint="Optional correspondent bank, extra address lines, and instructions.">
-          Additional details
-        </SectionTitle>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Beneficiary address line 2"
-            error={errors.beneficiary_address_line2?.message}
-            {...register('beneficiary_address_line2')}
-          />
-          <Input
-            label="Region / state"
-            error={errors.beneficiary_region_state?.message}
-            {...register('beneficiary_region_state')}
-          />
-          <Input
-            label="Bank street address line 1"
-            error={errors.beneficiary_bank_address_line1?.message}
-            {...register('beneficiary_bank_address_line1')}
-          />
-          <Input
-            label="Intermediary bank name"
-            error={errors.intermediary_bank_name?.message}
-            {...register('intermediary_bank_name')}
-          />
-          <Input
-            label="Intermediary BIC"
-            className="font-mono uppercase"
-            error={errors.intermediary_bank_bic?.message}
-            {...register('intermediary_bank_bic')}
-          />
-          <div className="sm:col-span-2">
-            <Input
-              label="Instructions to beneficiary bank"
-              error={errors.instructions_to_beneficiary_bank?.message}
-              {...register('instructions_to_beneficiary_bank')}
-            />
+      <div className="overflow-hidden rounded-xl border border-emerald-200/70 bg-white/40">
+        <button
+          type="button"
+          onClick={() => setAdditionalOpen((open) => !open)}
+          aria-expanded={additionalOpen}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/60"
+        >
+          <div>
+            <p className="text-xs font-semibold text-emerald-950">Additional details</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-900/75">
+              Optional — correspondent bank, extra address lines, and instructions
+            </p>
           </div>
-        </div>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-emerald-800 transition-transform',
+              additionalOpen && 'rotate-180',
+            )}
+            aria-hidden
+          />
+        </button>
+        {additionalOpen ? (
+          <div className="border-t border-emerald-200/70 px-4 pb-4 pt-3">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label="Beneficiary address line 2"
+                error={errors.beneficiary_address_line2?.message}
+                {...register('beneficiary_address_line2')}
+              />
+              <Input
+                label="Region / state"
+                error={errors.beneficiary_region_state?.message}
+                {...register('beneficiary_region_state')}
+              />
+              <Input
+                label="Bank street address line 1"
+                error={errors.beneficiary_bank_address_line1?.message}
+                {...register('beneficiary_bank_address_line1')}
+              />
+              <Input
+                label="Intermediary bank name"
+                error={errors.intermediary_bank_name?.message}
+                {...register('intermediary_bank_name')}
+              />
+              <Input
+                label="Intermediary BIC"
+                className="font-mono uppercase"
+                error={errors.intermediary_bank_bic?.message}
+                {...register('intermediary_bank_bic')}
+              />
+              <div className="sm:col-span-2">
+                <Input
+                  label="Instructions to beneficiary bank"
+                  error={errors.instructions_to_beneficiary_bank?.message}
+                  {...register('instructions_to_beneficiary_bank')}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )

@@ -136,7 +136,7 @@ export default function NotificationsModal({ open, onClose }: NotificationsModal
               No notifications.
             </div>
           ) : (
-            <ul className="space-y-3" aria-label="Notification list">
+            <ul className="space-y-2" aria-label="Notification list">
               {items.map((n) => (
                 <li key={n.id}>
                   <div
@@ -150,23 +150,23 @@ export default function NotificationsModal({ open, onClose }: NotificationsModal
                       }
                     }}
                     className={cn(
-                      'rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm outline-none transition-shadow',
+                      'rounded-lg border border-gray-100 bg-white px-3 py-2.5 text-left outline-none transition-colors',
                       'focus-visible:ring-2 focus-visible:ring-primary/25',
-                      !n.is_read ? 'border-l-4 border-l-accent shadow-md' : 'hover:shadow-md',
+                      !n.is_read ? 'border-l-[3px] border-l-accent bg-emerald-50/30' : 'hover:bg-gray-50/80',
                     )}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p
                           className={cn(
                             'text-sm leading-snug',
-                            n.is_read ? 'font-normal text-gray-600' : 'font-semibold text-gray-900',
+                            n.is_read ? 'font-medium text-gray-700' : 'font-semibold text-gray-900',
                           )}
                         >
                           {n.subject}
                         </p>
-                        <p className="mt-1 text-xs text-gray-400">{formatRelativeTime(n.sent_at)}</p>
-                        <p className="mt-3 whitespace-pre-wrap text-sm text-gray-600">{n.body}</p>
+                        <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-gray-500">{n.body}</p>
+                        <p className="mt-1 text-[10px] text-gray-400">{formatRelativeTime(n.sent_at)}</p>
                       </div>
                       <button
                         type="button"

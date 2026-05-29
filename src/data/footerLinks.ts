@@ -45,7 +45,7 @@ export const SOCIAL_LINKS: SocialLink[] = [
 ]
 
 export const FOOTER_CONTACT = {
-  email: 'support@safapay.bank',
+  email: 'support@safapaygroup.com',
   phone: '1-800-SAFA-PAY',
   tagline: 'Global operations · Digital-first banking',
 } as const
