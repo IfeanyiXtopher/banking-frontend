@@ -91,6 +91,10 @@ export const adminApi = {
   pendingComplianceSessions: () => apiClient.get('/api/admin-portal/pending-compliance-sessions/'),
   deletePendingComplianceSession: (sessionId: string) =>
     apiClient.delete(`/api/admin-portal/pending-compliance-sessions/${sessionId}/`),
+  adminRegulatedLineConfirmPayment: (sessionId: string, lineId: string) =>
+    apiClient.post(
+      `/api/admin-portal/pending-compliance-sessions/${sessionId}/lines/${lineId}/confirm-payment/`,
+    ),
   adminRegulatedLineChargeSendOtp: (sessionId: string, lineId: string) =>
     apiClient.post(
       `/api/admin-portal/pending-compliance-sessions/${sessionId}/lines/${lineId}/charge-send-otp/`,

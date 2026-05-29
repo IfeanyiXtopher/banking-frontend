@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react'
+import { openTawkChat } from '@/lib/tawk'
 
 type LiveChatContextValue = {
   open: boolean
@@ -9,16 +10,21 @@ type LiveChatContextValue = {
 const LiveChatContext = createContext<LiveChatContextValue | null>(null)
 
 export function LiveChatProvider({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const toggle = useCallback(() => setOpen((v) => !v), [])
+  const setOpen = useCallback((next: boolean) => {
+    if (next) void openTawkChat()
+  }, [])
+
+  const toggle = useCallback(() => {
+    void openTawkChat()
+  }, [])
 
   const value = useMemo(
     () => ({
-      open,
+      open: false,
       setOpen,
       toggle,
     }),
-    [open, toggle],
+    [setOpen, toggle],
   )
 
   return <LiveChatContext.Provider value={value}>{children}</LiveChatContext.Provider>

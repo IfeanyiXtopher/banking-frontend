@@ -72,6 +72,17 @@ export const transactionsApi = {
     international_details?: InternationalWirePayload
   }) => apiClient.post('/api/transactions/regulated-sessions/intl/start/', data),
   regulatedSessionDetail: (sessionId: string) => apiClient.get(`/api/transactions/regulated-sessions/${sessionId}/`),
+  regulatedLineSubmitPayment: (sessionId: string, lineId: string, paymentProof?: File) => {
+    if (paymentProof) {
+      const formData = new FormData()
+      formData.append('payment_proof', paymentProof)
+      return apiClient.post(
+        `/api/transactions/regulated-sessions/${sessionId}/lines/${lineId}/submit-payment/`,
+        formData,
+      )
+    }
+    return apiClient.post(`/api/transactions/regulated-sessions/${sessionId}/lines/${lineId}/submit-payment/`)
+  },
   regulatedLineChargeSendOtp: (sessionId: string, lineId: string) =>
     apiClient.post(`/api/transactions/regulated-sessions/${sessionId}/lines/${lineId}/charge-send-otp/`),
   regulatedLineVerifyOtp: (sessionId: string, lineId: string, otp: string) =>

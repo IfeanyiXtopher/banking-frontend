@@ -14,7 +14,8 @@ import { formatDisplayCurrency } from '@/utils/format'
 type PayoutContext = {
   requires_compliance: boolean
   compliance_fee_total: string
-  fee_lines: { code: string; name: string; amount: string }[]
+  fee_lines: { code: string; name: string; amount: string; customer_message?: string }[]
+  payout_message?: string
   resume: {
     session_id: string
     session_status: string
@@ -215,7 +216,8 @@ export default function LoanApplicationPayoutPage() {
         <div className="border-t border-gray-100 px-6 py-4">
           <p className="text-sm leading-relaxed text-gray-600">
             {needsCompliance
-              ? 'Verification is required before we can release your funds.'
+              ? (payout?.payout_message?.trim() ||
+                  'Verification is required before we can release your funds.')
               : 'Choose the account where you would like to receive your funds.'}
           </p>
         </div>

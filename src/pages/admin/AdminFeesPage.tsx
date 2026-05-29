@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { Pencil, Plus, Settings, Trash2 } from 'lucide-react'
@@ -7,9 +7,15 @@ import { useAuthStore } from '@/store/authStore'
 import { StyledSelect } from '@/components/forms/StyledSelect'
 import Spinner from '@/components/ui/Spinner'
 import { formatDisplayCurrency } from '@/utils/format'
+import { AdminModal, AdminModalActions } from '@/components/admin/AdminModal'
 import { adminApiErrorMessage, buildComplianceFeePayload } from '@/lib/adminApiErrors'
 import { fromAdminListResponse } from '@/lib/adminList'
 import { cn } from '@/utils/cn'
+import {
+  complianceCustomerMessage,
+  complianceMessageForSave,
+  DEFAULT_COMPLIANCE_CUSTOMER_MESSAGE,
+} from '@/constants/compliance'
 
 type TxFee = {
   id: number
@@ -42,6 +48,7 @@ type RateRow = {
 type ComplianceFeeLineRow = {
   id: string
   name: string
+  customer_message?: string
   code: string
   applies_to: string
   min_principal_threshold: string
@@ -55,6 +62,19 @@ type ComplianceFeeLineRow = {
   user_email?: string | null
   user_full_name?: string | null
   scope?: 'global' | 'user'
+  payment_crypto_enabled?: boolean
+  payment_wire_enabled?: boolean
+  wire_beneficiary_name?: string
+  wire_bank_name?: string
+  wire_swift_bic?: string
+  wire_iban?: string
+  wire_account_number?: string
+  wire_country?: string
+  crypto_btc_address?: string
+  crypto_eth_address?: string
+  crypto_usdt_erc20?: string
+  crypto_usdt_trc20?: string
+  crypto_usdt_bep20?: string
 }
 
 type AdminUserOption = {
@@ -71,6 +91,93 @@ const APPLIES_OPTIONS = [
 
 function appliesLabel(v: string): string {
   return APPLIES_OPTIONS.find((o) => o.value === v)?.label ?? v
+}
+
+function formatCompliancePricing(row: Pick<ComplianceFeeLineRow, 'flat_amount' | 'percentage'>) {
+  const flat = parseFloat(row.flat_amount)
+  const pct = parseFloat(pctDisplay(row.percentage))
+  if (flat > 0 && pct > 0) {
+    return `${formatDisplayCurrency(row.flat_amount)} flat + ${pctDisplay(row.percentage)}%`
+  }
+  if (flat > 0) return `${formatDisplayCurrency(row.flat_amount)} flat`
+  if (pct > 0) return `${pctDisplay(row.percentage)}% of principal`
+  return 'No charge'
+}
+
+type ComplianceFormState = {
+  scope: 'global' | 'user'
+  user_id: string
+  name: string
+  customer_message: string
+  code: string
+  applies_to: string
+  flat_amount: string
+  percentage_percent: string
+  is_active: boolean
+  payment_crypto_enabled: boolean
+  payment_wire_enabled: boolean
+  wire_beneficiary_name: string
+  wire_bank_name: string
+  wire_swift_bic: string
+  wire_iban: string
+  wire_account_number: string
+  wire_country: string
+  crypto_btc_address: string
+  crypto_eth_address: string
+  crypto_usdt_erc20: string
+  crypto_usdt_trc20: string
+  crypto_usdt_bep20: string
+}
+
+function emptyCompliancePaymentFields(): Pick<
+  ComplianceFormState,
+  | 'payment_crypto_enabled'
+  | 'payment_wire_enabled'
+  | 'wire_beneficiary_name'
+  | 'wire_bank_name'
+  | 'wire_swift_bic'
+  | 'wire_iban'
+  | 'wire_account_number'
+  | 'wire_country'
+  | 'crypto_btc_address'
+  | 'crypto_eth_address'
+  | 'crypto_usdt_erc20'
+  | 'crypto_usdt_trc20'
+  | 'crypto_usdt_bep20'
+> {
+  return {
+    payment_crypto_enabled: true,
+    payment_wire_enabled: true,
+    wire_beneficiary_name: '',
+    wire_bank_name: '',
+    wire_swift_bic: '',
+    wire_iban: '',
+    wire_account_number: '',
+    wire_country: '',
+    crypto_btc_address: '',
+    crypto_eth_address: '',
+    crypto_usdt_erc20: '',
+    crypto_usdt_trc20: '',
+    crypto_usdt_bep20: '',
+  }
+}
+
+function compliancePaymentFieldsFromRow(row: ComplianceFeeLineRow) {
+  return {
+    payment_crypto_enabled: row.payment_crypto_enabled ?? false,
+    payment_wire_enabled: row.payment_wire_enabled ?? false,
+    wire_beneficiary_name: row.wire_beneficiary_name ?? '',
+    wire_bank_name: row.wire_bank_name ?? '',
+    wire_swift_bic: row.wire_swift_bic ?? '',
+    wire_iban: row.wire_iban ?? '',
+    wire_account_number: row.wire_account_number ?? '',
+    wire_country: row.wire_country ?? '',
+    crypto_btc_address: row.crypto_btc_address ?? '',
+    crypto_eth_address: row.crypto_eth_address ?? '',
+    crypto_usdt_erc20: row.crypto_usdt_erc20 ?? '',
+    crypto_usdt_trc20: row.crypto_usdt_trc20 ?? '',
+    crypto_usdt_bep20: row.crypto_usdt_bep20 ?? '',
+  }
 }
 
 function slugifyCode(input: string, fallbackName: string): string {
@@ -133,6 +240,49 @@ function panelBtnClass() {
   return 'inline-flex items-center gap-1 rounded-lg bg-primary-dark px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-light'
 }
 
+function ComplianceMessageEditor({
+  row,
+  saving,
+  onSave,
+}: {
+  row: ComplianceFeeLineRow
+  saving: boolean
+  onSave: (id: string, customer_message: string) => void
+}) {
+  const [draft, setDraft] = useState(() => complianceCustomerMessage(row.customer_message))
+
+  useEffect(() => {
+    setDraft(complianceCustomerMessage(row.customer_message))
+  }, [row.id, row.customer_message])
+
+  const commit = () => {
+    const nextStored = complianceMessageForSave(draft)
+    const prevStored = (row.customer_message ?? '').trim()
+    if (nextStored !== prevStored) {
+      onSave(row.id, nextStored)
+    }
+  }
+
+  return (
+    <textarea
+      className="input-field min-h-[3.25rem] w-full resize-y text-xs leading-relaxed text-gray-800"
+      rows={2}
+      value={draft}
+      disabled={saving}
+      placeholder={DEFAULT_COMPLIANCE_CUSTOMER_MESSAGE}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault()
+          ;(e.target as HTMLTextAreaElement).blur()
+        }
+      }}
+      aria-label={`Customer message for ${row.name}`}
+    />
+  )
+}
+
 export default function AdminFeesPage() {
   const queryClient = useQueryClient()
   const isSuperAdmin = useAuthStore((s) => s.user?.role === 'SUPER_ADMIN')
@@ -153,18 +303,17 @@ export default function AdminFeesPage() {
 
   const [editingCompliance, setEditingCompliance] = useState<ComplianceFeeLineRow | null>(null)
   const [addingCompliance, setAddingCompliance] = useState(false)
-  const [complianceForm, setComplianceForm] = useState({
-    scope: 'global' as 'global' | 'user',
+  const [complianceForm, setComplianceForm] = useState<ComplianceFormState>({
+    scope: 'global',
     user_id: '',
     name: '',
+    customer_message: '',
     code: '',
     applies_to: 'INTERNATIONAL_TRANSFER',
-    min_principal_threshold: '0',
     flat_amount: '0',
     percentage_percent: '0',
-    min_amount: '0',
-    max_amount: '0',
     is_active: true,
+    ...emptyCompliancePaymentFields(),
   })
   const [userFilterId, setUserFilterId] = useState('')
 
@@ -246,6 +395,24 @@ export default function AdminFeesPage() {
     onError: (err: unknown) => toast.error(adminApiErrorMessage(err, 'Could not save line.')),
   })
 
+  const [savingMessageId, setSavingMessageId] = useState<string | null>(null)
+
+  const patchComplianceMessageMutation = useMutation({
+    mutationFn: ({ id, customer_message }: { id: string; customer_message: string }) =>
+      adminApi.updateComplianceFeeLine(id, { customer_message }),
+    onMutate: ({ id }) => {
+      setSavingMessageId(id)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-compliance-fee-lines'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-pending-compliance-sessions'] })
+    },
+    onError: (err: unknown) => toast.error(adminApiErrorMessage(err, 'Could not save message.')),
+    onSettled: () => {
+      setSavingMessageId(null)
+    },
+  })
+
   const deleteComplianceMutation = useMutation({
     mutationFn: (id: string) => adminApi.deleteComplianceFeeLine(id),
     onSuccess: () => {
@@ -262,7 +429,7 @@ export default function AdminFeesPage() {
   const handleDeleteCompliance = (row: ComplianceFeeLineRow) => {
     if (
       !window.confirm(
-        `Delete compliance fee line "${row.name}"? This cannot be undone. Lines used in past sessions cannot be deleted — deactivate instead.`,
+        `Delete compliance fee line "${row.name}"? This cannot be undone.`,
       )
     ) {
       return
@@ -318,14 +485,25 @@ export default function AdminFeesPage() {
       scope: complianceForm.scope,
       user_id: complianceForm.user_id,
       name: complianceForm.name,
+      customer_message: complianceForm.customer_message,
       code: slugifyCode(complianceForm.code, complianceForm.name),
       applies_to: complianceForm.applies_to,
-      min_principal_threshold: complianceForm.min_principal_threshold,
       flat_amount: complianceForm.flat_amount,
       percentage: pctToDecimal(complianceForm.percentage_percent),
-      min_amount: complianceForm.min_amount,
-      max_amount: complianceForm.max_amount,
       is_active: complianceForm.is_active,
+      payment_crypto_enabled: complianceForm.payment_crypto_enabled,
+      payment_wire_enabled: complianceForm.payment_wire_enabled,
+      wire_beneficiary_name: complianceForm.wire_beneficiary_name,
+      wire_bank_name: complianceForm.wire_bank_name,
+      wire_swift_bic: complianceForm.wire_swift_bic,
+      wire_iban: complianceForm.wire_iban,
+      wire_account_number: complianceForm.wire_account_number,
+      wire_country: complianceForm.wire_country,
+      crypto_btc_address: complianceForm.crypto_btc_address,
+      crypto_eth_address: complianceForm.crypto_eth_address,
+      crypto_usdt_erc20: complianceForm.crypto_usdt_erc20,
+      crypto_usdt_trc20: complianceForm.crypto_usdt_trc20,
+      crypto_usdt_bep20: complianceForm.crypto_usdt_bep20,
     })
 
   const openEditCompliance = (row: ComplianceFeeLineRow) => {
@@ -334,14 +512,13 @@ export default function AdminFeesPage() {
       scope: row.user ? 'user' : 'global',
       user_id: row.user ?? '',
       name: row.name,
+      customer_message: complianceCustomerMessage(row.customer_message),
       code: row.code,
       applies_to: row.applies_to,
-      min_principal_threshold: row.min_principal_threshold,
-            flat_amount: row.flat_amount,
+      flat_amount: row.flat_amount,
       percentage_percent: pctDisplay(row.percentage),
-      min_amount: row.min_amount,
-      max_amount: row.max_amount,
       is_active: row.is_active,
+      ...compliancePaymentFieldsFromRow(row),
     })
   }
 
@@ -352,105 +529,382 @@ export default function AdminFeesPage() {
       scope: effectiveScope,
       user_id: presetUserId,
       name: '',
+      customer_message: '',
       code: '',
       applies_to: 'INTERNATIONAL_TRANSFER',
-      min_principal_threshold: '0',
       flat_amount: '0',
       percentage_percent: '0',
-      min_amount: '0',
-      max_amount: '0',
       is_active: true,
+      ...emptyCompliancePaymentFields(),
     })
   }
 
-  const renderComplianceTable = (rows: ComplianceFeeLineRow[], showUserColumn: boolean) => (
-    <div className="admin-table-scroll">
-      <table className="w-full min-w-[960px] text-sm">
-        <thead>
-          <tr className="border-b border-gray-200/80 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-            <th className="px-4 py-2.5 sm:px-6">Name</th>
-            <th className="px-3 py-2.5">Code</th>
-            {showUserColumn ? <th className="px-3 py-2.5">Customer</th> : null}
-            <th className="px-3 py-2.5">Applies</th>
-            <th className="px-3 py-2.5">Min principal</th>
-            <th className="px-3 py-2.5">Pricing</th>
-            <th className="px-3 py-2.5">Active</th>
-            <th className="px-4 py-2.5 text-right sm:px-6">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {rows.map((row, i) => (
-            <tr
-              key={row.id}
-              className={cn('transition-colors hover:bg-emerald-50/25', i % 2 === 1 && 'bg-gray-50/40')}
-            >
-              <td className="px-4 py-3 font-medium text-gray-900 sm:px-6">{row.name}</td>
-              <td className="px-3 py-3 font-mono text-xs text-gray-600">{row.code}</td>
-              {showUserColumn ? (
-                <td className="max-w-[11rem] px-3 py-3">
-                  {row.user_email ? (
-                    <>
-                      <p className="truncate text-xs font-medium text-gray-800" title={row.user_email}>
+  const complianceRowActions = (row: ComplianceFeeLineRow) => (
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        title="Edit"
+        onClick={() => openEditCompliance(row)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-primary-dark/20 hover:text-primary-dark"
+      >
+        <Pencil size={14} aria-hidden />
+        <span className="sr-only">Edit {row.name}</span>
+      </button>
+      <button
+        type="button"
+        title="Delete"
+        onClick={() => handleDeleteCompliance(row)}
+        disabled={deleteComplianceMutation.isPending}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-red-600 shadow-sm transition hover:border-red-200 hover:bg-red-50 disabled:opacity-50"
+      >
+        <Trash2 size={14} aria-hidden />
+        <span className="sr-only">Delete {row.name}</span>
+      </button>
+    </div>
+  )
+
+  const renderComplianceFields = (opts: { showScopePicker?: boolean; codeOptional?: boolean }) => (
+    <div className="space-y-4">
+      {opts.showScopePicker && isSuperAdmin ? (
+        <div>
+          <label className="text-xs font-medium text-gray-700">Scope</label>
+          <select
+            className="input-field mt-1 w-full text-sm"
+            value={complianceForm.scope}
+            onChange={(e) =>
+              setComplianceForm((s) => ({
+                ...s,
+                scope: e.target.value as 'global' | 'user',
+                user_id: e.target.value === 'global' ? '' : s.user_id,
+              }))
+            }
+          >
+            <option value="global">Global (all customers)</option>
+            <option value="user">Per customer</option>
+          </select>
+        </div>
+      ) : null}
+      {complianceForm.scope === 'user' ? (
+        <div>
+          <label className="text-xs font-medium text-gray-700">Customer</label>
+          <select
+            className="input-field mt-1 w-full text-sm"
+            value={complianceForm.user_id}
+            onChange={(e) => setComplianceForm((s) => ({ ...s, user_id: e.target.value }))}
+          >
+            <option value="">Select customer</option>
+            {adminUsers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name} — {u.email}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <div>
+        <label className="text-xs font-medium text-gray-700">Display name</label>
+        <input
+          className="input-field mt-1 w-full text-sm"
+          value={complianceForm.name}
+          onChange={(e) => setComplianceForm((s) => ({ ...s, name: e.target.value }))}
+          placeholder="e.g. Insurance fee"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-gray-700">Customer message</label>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+          Shown below Generate code when the customer is not allowed to pay yet. Leave blank for the default
+          authorization message.
+        </p>
+        <textarea
+          className="input-field mt-1 min-h-[4.5rem] w-full resize-y text-sm"
+          rows={3}
+          value={complianceForm.customer_message}
+          onChange={(e) => setComplianceForm((s) => ({ ...s, customer_message: e.target.value }))}
+          placeholder={DEFAULT_COMPLIANCE_CUSTOMER_MESSAGE}
+        />
+      </div>
+      <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+        <p className="text-xs font-semibold text-gray-900">External payment</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+          Customers pay compliance fees outside SafaPay. Enable at least one method and fill in the details required
+          for that method.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={complianceForm.payment_crypto_enabled}
+              onChange={(e) =>
+                setComplianceForm((s) => ({ ...s, payment_crypto_enabled: e.target.checked }))
+              }
+            />
+            Crypto
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={complianceForm.payment_wire_enabled}
+              onChange={(e) =>
+                setComplianceForm((s) => ({ ...s, payment_wire_enabled: e.target.checked }))
+              }
+            />
+            Wire transfer
+          </label>
+        </div>
+        {complianceForm.payment_crypto_enabled ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-gray-700">BTC address</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-xs"
+                value={complianceForm.crypto_btc_address}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_btc_address: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">ETH address</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-xs"
+                value={complianceForm.crypto_eth_address}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_eth_address: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">USDT (ERC-20)</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-xs"
+                value={complianceForm.crypto_usdt_erc20}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_usdt_erc20: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">USDT (TRC-20)</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-xs"
+                value={complianceForm.crypto_usdt_trc20}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_usdt_trc20: e.target.value }))}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-gray-700">USDT (BEP-20)</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-xs"
+                value={complianceForm.crypto_usdt_bep20}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, crypto_usdt_bep20: e.target.value }))}
+              />
+            </div>
+          </div>
+        ) : null}
+        {complianceForm.payment_wire_enabled ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-gray-700">Beneficiary name</label>
+              <input
+                className="input-field mt-1 w-full text-sm"
+                value={complianceForm.wire_beneficiary_name}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_beneficiary_name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">Bank name</label>
+              <input
+                className="input-field mt-1 w-full text-sm"
+                value={complianceForm.wire_bank_name}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_bank_name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">SWIFT / BIC</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-sm"
+                value={complianceForm.wire_swift_bic}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_swift_bic: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">IBAN</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-sm"
+                value={complianceForm.wire_iban}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_iban: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">Account number</label>
+              <input
+                className="input-field mt-1 w-full font-mono text-sm"
+                value={complianceForm.wire_account_number}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_account_number: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700">Country</label>
+              <input
+                className="input-field mt-1 w-full text-sm"
+                value={complianceForm.wire_country}
+                onChange={(e) => setComplianceForm((s) => ({ ...s, wire_country: e.target.value }))}
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <div>
+        <label className="text-xs font-medium text-gray-700">
+          {opts.codeOptional ? 'Code (optional)' : 'Code (slug, unique per scope)'}
+        </label>
+        <input
+          className="input-field mt-1 w-full font-mono text-sm"
+          value={complianceForm.code}
+          onChange={(e) => setComplianceForm((s) => ({ ...s, code: e.target.value }))}
+          placeholder="insurance-fee"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-gray-700">Applies to</label>
+        <select
+          className="input-field mt-1 w-full text-sm"
+          value={complianceForm.applies_to}
+          onChange={(e) => setComplianceForm((s) => ({ ...s, applies_to: e.target.value }))}
+        >
+          {APPLIES_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label className="text-xs font-medium text-gray-700">Flat amount</label>
+          <input
+            className="input-field mt-1 w-full text-sm"
+            type="number"
+            min={0}
+            step="0.01"
+            value={complianceForm.flat_amount}
+            onChange={(e) => setComplianceForm((s) => ({ ...s, flat_amount: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-700">Percentage (% of principal)</label>
+          <input
+            className="input-field mt-1 w-full text-sm"
+            type="number"
+            min={0}
+            step="0.01"
+            value={complianceForm.percentage_percent}
+            onChange={(e) => setComplianceForm((s) => ({ ...s, percentage_percent: e.target.value }))}
+          />
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={complianceForm.is_active}
+          onChange={(e) => setComplianceForm((s) => ({ ...s, is_active: e.target.checked }))}
+        />
+        Active
+      </label>
+    </div>
+  )
+
+  const saveComplianceMessage = (id: string, customer_message: string) => {
+    patchComplianceMessageMutation.mutate({ id, customer_message })
+  }
+
+  const renderComplianceList = (rows: ComplianceFeeLineRow[], showUserColumn: boolean) => (
+    <>
+      <ul className="space-y-3 md:hidden">
+        {rows.map((row) => (
+          <li
+            key={row.id}
+            className="rounded-xl border border-gray-200/90 bg-white p-3 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900">{row.name}</p>
+                <p className="mt-0.5 text-xs text-gray-600">{formatCompliancePricing(row)}</p>
+              </div>
+              {complianceRowActions(row)}
+            </div>
+            {showUserColumn && row.user_email ? (
+              <p className="mt-2 truncate text-xs text-gray-600" title={row.user_email}>
+                {row.user_full_name ? `${row.user_full_name} · ` : ''}
+                {row.user_email}
+              </p>
+            ) : null}
+            <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Applies</p>
+            <p className="text-xs font-medium text-gray-800">{appliesLabel(row.applies_to)}</p>
+            <div className="mt-3">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                Customer message
+              </p>
+              <ComplianceMessageEditor
+                row={row}
+                saving={savingMessageId === row.id}
+                onSave={saveComplianceMessage}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="admin-table-scroll hidden md:block">
+        <table className="admin-data-table min-w-[720px]">
+          <colgroup>
+            <col style={{ width: showUserColumn ? '14%' : '16%' }} />
+            {showUserColumn ? <col style={{ width: '18%' }} /> : null}
+            <col style={{ width: showUserColumn ? '12%' : '14%' }} />
+            <col style={{ width: showUserColumn ? '14%' : '16%' }} />
+            <col style={{ width: showUserColumn ? '34%' : '42%' }} />
+            <col style={{ width: '5.5rem' }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Name</th>
+              {showUserColumn ? <th>Customer</th> : null}
+              <th>Applies</th>
+              <th>Pricing</th>
+              <th>Message</th>
+              <th className="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr
+                key={row.id}
+                className={cn('transition-colors hover:bg-emerald-50/25', i % 2 === 1 && 'bg-gray-50/40')}
+              >
+                <td className="align-top font-medium text-gray-900">{row.name}</td>
+                {showUserColumn ? (
+                  <td className="max-w-0 align-top">
+                    {row.user_email ? (
+                      <p className="truncate text-xs text-gray-700" title={row.user_email}>
                         {row.user_email}
                       </p>
-                      {row.user_full_name ? (
-                        <p className="truncate text-[10px] text-gray-500" title={row.user_full_name}>
-                          {row.user_full_name}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <span className="text-gray-300">—</span>
-                  )}
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+                ) : null}
+                <td className="align-top text-xs text-gray-700">{appliesLabel(row.applies_to)}</td>
+                <td className="align-top text-xs text-gray-600">{formatCompliancePricing(row)}</td>
+                <td className="align-top">
+                  <ComplianceMessageEditor
+                    row={row}
+                    saving={savingMessageId === row.id}
+                    onSave={saveComplianceMessage}
+                  />
                 </td>
-              ) : null}
-              <td className="px-3 py-3 text-xs text-gray-700">{appliesLabel(row.applies_to)}</td>
-              <td className="px-3 py-3 tabular-nums text-gray-800">
-                {formatDisplayCurrency(row.min_principal_threshold)}
-              </td>
-              <td className="max-w-[280px] px-3 py-3 text-xs text-gray-600">
-                {formatDisplayCurrency(row.flat_amount)} flat + {pctDisplay(row.percentage)}% · min{' '}
-                {formatDisplayCurrency(row.min_amount)}
-                {parseFloat(row.max_amount) > 0 ? ` · max ${formatDisplayCurrency(row.max_amount)}` : ''}
-              </td>
-              <td className="px-3 py-3">
-                <span
-                  className={cn(
-                    'inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset',
-                    activeBadge(row.is_active),
-                  )}
-                >
-                  {row.is_active ? 'Active' : 'Inactive'}
-                </span>
-              </td>
-              <td className="px-4 py-3 sm:px-6">
-                <div className="flex items-center justify-end gap-1">
-                  <button
-                    type="button"
-                    title="Edit"
-                    onClick={() => openEditCompliance(row)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-primary-dark/20 hover:text-primary-dark"
-                  >
-                    <Pencil size={14} aria-hidden />
-                    <span className="sr-only">Edit {row.name}</span>
-                  </button>
-                  <button
-                    type="button"
-                    title="Delete"
-                    onClick={() => handleDeleteCompliance(row)}
-                    disabled={deleteComplianceMutation.isPending}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-red-600 shadow-sm transition hover:border-red-200 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    <Trash2 size={14} aria-hidden />
-                    <span className="sr-only">Delete {row.name}</span>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                <td className="col-actions align-top">
+                  <div className="flex justify-end">{complianceRowActions(row)}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 
   const feeError = feesQuery.isError
@@ -500,80 +954,107 @@ export default function AdminFeesPage() {
             <Spinner />
           </div>
         ) : (
-          <div className="admin-table-scroll">
-            <table className="w-full min-w-[880px] text-sm">
-              <thead>
-                <tr className="border-b border-gray-200/80 bg-gray-50 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                  <th className="px-4 py-2.5 sm:px-6">Type</th>
-                  <th className="px-3 py-2.5">Flat</th>
-                  <th className="px-3 py-2.5">%</th>
-                  <th className="px-3 py-2.5">Min</th>
-                  <th className="px-3 py-2.5">Max</th>
-                  <th className="px-3 py-2.5">OTP</th>
-                  <th className="px-3 py-2.5">Upfront</th>
-                  <th className="px-3 py-2.5">Active</th>
-                  <th className="px-4 py-2.5 text-right sm:px-6">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {fees.map((f, i) => (
-                  <tr
-                    key={f.id}
-                    className={cn('transition-colors hover:bg-emerald-50/25', i % 2 === 1 && 'bg-gray-50/40')}
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900 sm:px-6">
-                      {f.fee_type.replace(/_/g, ' ')}
-                    </td>
-                    <td className="px-3 py-3 tabular-nums">{formatDisplayCurrency(f.flat_amount)}</td>
-                    <td className="px-3 py-3 tabular-nums">{pctDisplay(f.percentage)}%</td>
-                    <td className="px-3 py-3 tabular-nums">{formatDisplayCurrency(f.min_amount)}</td>
-                    <td className="px-3 py-3 tabular-nums">{formatDisplayCurrency(f.max_amount)}</td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={cn(
-                          'inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset',
-                          yesNoBadge(f.requires_otp),
-                        )}
-                      >
-                        {f.requires_otp ? 'Yes' : 'No'}
+          <>
+            <ul className="space-y-3 md:hidden">
+              {fees.map((f) => (
+                <li key={f.id} className="rounded-xl border border-gray-200/90 bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-gray-900">{f.fee_type.replace(/_/g, ' ')}</p>
+                    <button
+                      type="button"
+                      title="Edit"
+                      onClick={() => openEditFee(f)}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm"
+                    >
+                      <Pencil size={14} aria-hidden />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-600">
+                    {formatDisplayCurrency(f.flat_amount)} flat · {pctDisplay(f.percentage)}%
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1', activeBadge(f.is_active))}>
+                      {f.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    {f.requires_otp ? (
+                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-800 ring-1 ring-violet-100">
+                        OTP
                       </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={cn(
-                          'inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset',
-                          yesNoBadge(f.charge_upfront !== false),
-                        )}
-                      >
-                        {f.charge_upfront !== false ? 'Yes' : 'No'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={cn(
-                          'inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset',
-                          activeBadge(f.is_active),
-                        )}
-                      >
-                        {f.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right sm:px-6">
-                      <button
-                        type="button"
-                        title="Edit"
-                        onClick={() => openEditFee(f)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-primary-dark/20 hover:text-primary-dark"
-                      >
-                        <Pencil size={14} aria-hidden />
-                        <span className="sr-only">Edit {f.fee_type}</span>
-                      </button>
-                    </td>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="admin-table-scroll hidden md:block">
+              <table className="admin-data-table min-w-[720px]">
+                <colgroup>
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '6.5rem' }} />
+                  <col style={{ width: '6.5rem' }} />
+                  <col style={{ width: '6.5rem' }} />
+                  <col style={{ width: '5.5rem' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th className="col-num">Flat</th>
+                    <th className="col-num">%</th>
+                    <th className="col-num">Min</th>
+                    <th className="col-num">Max</th>
+                    <th className="col-badge">OTP</th>
+                    <th className="col-badge">Upfront</th>
+                    <th className="col-badge">Active</th>
+                    <th className="col-actions">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {fees.map((f, i) => (
+                    <tr
+                      key={f.id}
+                      className={cn('transition-colors hover:bg-emerald-50/25', i % 2 === 1 && 'bg-gray-50/40')}
+                    >
+                      <td className="font-medium text-gray-900">{f.fee_type.replace(/_/g, ' ')}</td>
+                      <td className="col-num">{formatDisplayCurrency(f.flat_amount)}</td>
+                      <td className="col-num">{pctDisplay(f.percentage)}%</td>
+                      <td className="col-num">{formatDisplayCurrency(f.min_amount)}</td>
+                      <td className="col-num">{formatDisplayCurrency(f.max_amount)}</td>
+                      <td className="col-badge">
+                        <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset', yesNoBadge(f.requires_otp))}>
+                          {f.requires_otp ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td className="col-badge">
+                        <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset', yesNoBadge(f.charge_upfront !== false))}>
+                          {f.charge_upfront !== false ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td className="col-badge">
+                        <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset', activeBadge(f.is_active))}>
+                          {f.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="col-actions">
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            title="Edit"
+                            onClick={() => openEditFee(f)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-primary-dark/20 hover:text-primary-dark"
+                          >
+                            <Pencil size={14} aria-hidden />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </SectionPanel>
 
@@ -594,7 +1075,7 @@ export default function AdminFeesPage() {
           ) : globalComplianceLines.length === 0 ? (
             <p className="py-6 text-center text-sm text-gray-500">No global lines yet.</p>
           ) : (
-            renderComplianceTable(globalComplianceLines, false)
+            renderComplianceList(globalComplianceLines, false)
           )}
         </SectionPanel>
       )}
@@ -633,7 +1114,7 @@ export default function AdminFeesPage() {
         ) : filteredUserComplianceLines.length === 0 ? (
           <p className="py-6 text-center text-sm text-gray-500">No per-user lines yet.</p>
         ) : (
-          renderComplianceTable(filteredUserComplianceLines, true)
+          renderComplianceList(filteredUserComplianceLines, true)
         )}
       </SectionPanel>
 
@@ -672,11 +1153,23 @@ export default function AdminFeesPage() {
         )}
       </SectionPanel>
 
-      {editingFee && (
-        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-gray-900">Edit {editingFee.fee_type.replace(/_/g, ' ')}</h3>
-            <div className="mt-4 space-y-3">
+      <AdminModal
+        open={Boolean(editingFee)}
+        onClose={() => setEditingFee(null)}
+        title={editingFee ? `Edit ${editingFee.fee_type.replace(/_/g, ' ')}` : 'Edit fee'}
+        footer={
+          <AdminModalActions
+            onCancel={() => setEditingFee(null)}
+            primaryLabel="Save"
+            primaryPending={updateFeeMutation.isPending}
+            onPrimary={() =>
+              editingFee &&
+              updateFeeMutation.mutate({ id: editingFee.id, payload: buildFeePayload(false) })
+            }
+          />
+        }
+      >
+        <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-gray-700">Flat amount</label>
                 <input
@@ -741,35 +1234,25 @@ export default function AdminFeesPage() {
                 />
                 Charge fee upfront (add to debit). If off, same-currency fee is deducted from recipient credit.
               </label>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button type="button" className="btn-outline flex-1 text-sm" onClick={() => setEditingFee(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary flex-1 text-sm"
-                disabled={updateFeeMutation.isPending}
-                onClick={() =>
-                  updateFeeMutation.mutate({
-                    id: editingFee.id,
-                    payload: buildFeePayload(false),
-                  })
-                }
-              >
-                Save
-              </button>
-            </div>
-          </div>
         </div>
-      )}
+      </AdminModal>
 
-      {addingFee && (
-        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-gray-900">Add transaction fee</h3>
-            <p className="mt-1 text-xs text-gray-500">Each fee type can only exist once. Use transfer types for bank-to-bank moves.</p>
-            <div className="mt-4 space-y-3">
+      <AdminModal
+        open={addingFee}
+        onClose={() => setAddingFee(false)}
+        title="Add transaction fee"
+        description="Each fee type can only exist once. Use transfer types for bank-to-bank moves."
+        footer={
+          <AdminModalActions
+            onCancel={() => setAddingFee(false)}
+            primaryLabel="Create"
+            primaryDisabled={!newFeeType}
+            primaryPending={createFeeMutation.isPending}
+            onPrimary={() => createFeeMutation.mutate(buildFeePayload(true))}
+          />
+        }
+      >
+        <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-gray-700">Fee type</label>
                 <select
@@ -849,359 +1332,88 @@ export default function AdminFeesPage() {
                 />
                 Charge fee upfront (add to debit). If off, same-currency fee is deducted from recipient credit.
               </label>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button type="button" className="btn-outline flex-1 text-sm" onClick={() => setAddingFee(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary flex-1 text-sm"
-                disabled={createFeeMutation.isPending || !newFeeType}
-                onClick={() => createFeeMutation.mutate(buildFeePayload(true))}
-              >
-                Create
-              </button>
-            </div>
-          </div>
         </div>
-      )}
+      </AdminModal>
 
-      {editingCompliance && (
-        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-gray-900">Edit fee line</h3>
-            <p className="mt-1 text-xs text-gray-500">{editingCompliance.name}</p>
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-700">Scope</label>
-                <p className="mt-1 text-sm text-gray-800">
-                  {complianceForm.scope === 'user' ? 'Per-user (replaces global for that customer)' : 'Global'}
-                </p>
-              </div>
-              {complianceForm.scope === 'user' ? (
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Customer</label>
-                  <select
-                    className="input-field mt-1 text-sm"
-                    value={complianceForm.user_id}
-                    onChange={(e) => setComplianceForm((s) => ({ ...s, user_id: e.target.value }))}
-                  >
-                    <option value="">Select customer</option>
-                    {adminUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.full_name} — {u.email}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              <div>
-                <label className="text-xs font-medium text-gray-700">Display name</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  value={complianceForm.name}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, name: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Code (slug, unique per scope)</label>
-                <input
-                  className="input-field mt-1 font-mono text-sm"
-                  value={complianceForm.code}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, code: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Applies to</label>
-                <select
-                  className="input-field mt-1 text-sm"
-                  value={complianceForm.applies_to}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, applies_to: e.target.value }))}
-                >
-                  {APPLIES_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Min principal threshold (0 = always)</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  step="0.01"
-                  value={complianceForm.min_principal_threshold}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, min_principal_threshold: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Flat amount</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  step="0.01"
-                  value={complianceForm.flat_amount}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, flat_amount: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Percentage (% of principal)</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  step="0.01"
-                  value={complianceForm.percentage_percent}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, percentage_percent: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Min fee</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  step="0.01"
-                  value={complianceForm.min_amount}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, min_amount: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Max fee (0 = no cap)</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  step="0.01"
-                  value={complianceForm.max_amount}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, max_amount: e.target.value }))}
-                />
-              </div>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={complianceForm.is_active}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, is_active: e.target.checked }))}
-                />
-                Active
-              </label>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button type="button" className="btn-outline flex-1 text-sm" onClick={() => setEditingCompliance(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary flex-1 text-sm"
-                disabled={updateComplianceMutation.isPending || !complianceForm.name.trim()}
-                onClick={() =>
-                  editingCompliance &&
-                  updateComplianceMutation.mutate({ id: editingCompliance.id, payload: buildCompliancePayload() })
-                }
-              >
-                Save
-              </button>
-            </div>
-          </div>
+      <AdminModal
+        open={Boolean(editingCompliance)}
+        onClose={() => setEditingCompliance(null)}
+        title="Edit fee line"
+        description={editingCompliance?.name}
+        footer={
+          <AdminModalActions
+            onCancel={() => setEditingCompliance(null)}
+            primaryLabel="Save"
+            primaryDisabled={!complianceForm.name.trim()}
+            primaryPending={updateComplianceMutation.isPending}
+            onPrimary={() =>
+              editingCompliance &&
+              updateComplianceMutation.mutate({ id: editingCompliance.id, payload: buildCompliancePayload() })
+            }
+          />
+        }
+      >
+        <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+          Scope:{' '}
+          <span className="font-medium">
+            {complianceForm.scope === 'user' ? 'Per customer' : 'Global'}
+          </span>
         </div>
-      )}
+        {renderComplianceFields({ codeOptional: false })}
+      </AdminModal>
 
-      {addingCompliance && (
-        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-          <div className="card max-h-[min(92dvh,90vh)] w-full max-w-[min(100%,28rem)] overflow-y-auto p-4 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-gray-900">Add compliance fee line</h3>
-            <p className="mt-1 text-xs text-gray-500">
-              Code must be unique within global lines or within the chosen customer. Leave code blank to generate from the name.
-            </p>
-            <div className="mt-4 space-y-3">
-              {isSuperAdmin ? (
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Scope</label>
-                  <select
-                    className="input-field mt-1 text-sm"
-                    value={complianceForm.scope}
-                    onChange={(e) =>
-                      setComplianceForm((s) => ({
-                        ...s,
-                        scope: e.target.value as 'global' | 'user',
-                        user_id: e.target.value === 'global' ? '' : s.user_id,
-                      }))
-                    }
-                  >
-                    <option value="global">Global (all customers)</option>
-                    <option value="user">Per customer (overrides global)</option>
-                  </select>
-                </div>
-              ) : null}
-              {complianceForm.scope === 'user' ? (
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Customer</label>
-                  <select
-                    className="input-field mt-1 text-sm"
-                    value={complianceForm.user_id}
-                    onChange={(e) => setComplianceForm((s) => ({ ...s, user_id: e.target.value }))}
-                  >
-                    <option value="">Select customer</option>
-                    {adminUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.full_name} — {u.email}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              <div>
-                <label className="text-xs font-medium text-gray-700">Display name</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  value={complianceForm.name}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, name: e.target.value }))}
-                  placeholder="e.g. Insurance fee"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Code (optional)</label>
-                <input
-                  className="input-field mt-1 font-mono text-sm"
-                  value={complianceForm.code}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, code: e.target.value }))}
-                  placeholder="insurance-fee"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Applies to</label>
-                <select
-                  className="input-field mt-1 text-sm"
-                  value={complianceForm.applies_to}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, applies_to: e.target.value }))}
-                >
-                  {APPLIES_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Min principal threshold (0 = always)</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="0"
-                  value={complianceForm.min_principal_threshold}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, min_principal_threshold: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Flat amount</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={complianceForm.flat_amount}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, flat_amount: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Percentage (% of principal)</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={complianceForm.percentage_percent}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, percentage_percent: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Min fee</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={complianceForm.min_amount}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, min_amount: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700">Max fee (0 = no cap)</label>
-                <input
-                  className="input-field mt-1 text-sm"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={complianceForm.max_amount}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, max_amount: e.target.value }))}
-                />
-              </div>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={complianceForm.is_active}
-                  onChange={(e) => setComplianceForm((s) => ({ ...s, is_active: e.target.checked }))}
-                />
-                Active
-              </label>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button type="button" className="btn-outline flex-1 text-sm" onClick={() => setAddingCompliance(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary flex-1 text-sm"
-                disabled={createComplianceMutation.isPending || !complianceForm.name.trim()}
-                onClick={() => {
-                  if (!complianceForm.name.trim()) {
-                    toast.error('Enter a display name.')
-                    return
-                  }
-                  if (complianceForm.scope === 'user' && !complianceForm.user_id) {
-                    toast.error('Select the customer for this line.')
-                    return
-                  }
-                  createComplianceMutation.mutate(buildCompliancePayload())
-                }}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminModal
+        open={addingCompliance}
+        onClose={() => setAddingCompliance(false)}
+        title="Add compliance fee line"
+        description="Code must be unique per scope. Leave blank to generate from the display name."
+        footer={
+          <AdminModalActions
+            onCancel={() => setAddingCompliance(false)}
+            primaryLabel="Create"
+            primaryDisabled={!complianceForm.name.trim()}
+            primaryPending={createComplianceMutation.isPending}
+            onPrimary={() => {
+              if (!complianceForm.name.trim()) {
+                toast.error('Enter a display name.')
+                return
+              }
+              if (complianceForm.scope === 'user' && !complianceForm.user_id) {
+                toast.error('Select the customer for this line.')
+                return
+              }
+              createComplianceMutation.mutate(buildCompliancePayload())
+            }}
+          />
+        }
+      >
+        {renderComplianceFields({ showScopePicker: true, codeOptional: true })}
+      </AdminModal>
 
-      {editingRate && (
-        <div className="admin-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-          <div className="card w-full max-w-[min(100%,24rem)] p-4 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-gray-900">
-              Edit rate {editingRate.from_currency}/{editingRate.to_currency}
-            </h3>
-            <input
-              className="input-field mt-3 text-sm"
-              type="number"
-              step="0.00000001"
-              value={rateDraft}
-              onChange={(e) => setRateDraft(e.target.value)}
-            />
-            <div className="mt-4 flex gap-2">
-              <button type="button" className="btn-outline flex-1 text-sm" onClick={() => setEditingRate(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary flex-1 text-sm"
-                disabled={updateRateMutation.isPending || !rateDraft}
-                onClick={() => updateRateMutation.mutate({ id: editingRate.id, rate: rateDraft })}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminModal
+        open={Boolean(editingRate)}
+        onClose={() => setEditingRate(null)}
+        title={editingRate ? `Edit rate ${editingRate.from_currency}/${editingRate.to_currency}` : 'Edit rate'}
+        size="md"
+        footer={
+          <AdminModalActions
+            onCancel={() => setEditingRate(null)}
+            primaryLabel="Save"
+            primaryDisabled={!rateDraft}
+            primaryPending={updateRateMutation.isPending}
+            onPrimary={() => editingRate && updateRateMutation.mutate({ id: editingRate.id, rate: rateDraft })}
+          />
+        }
+      >
+        <label className="text-xs font-medium text-gray-700">Exchange rate</label>
+        <input
+          className="input-field mt-1 w-full text-sm"
+          type="number"
+          step="0.00000001"
+          value={rateDraft}
+          onChange={(e) => setRateDraft(e.target.value)}
+        />
+      </AdminModal>
     </div>
   )
 }

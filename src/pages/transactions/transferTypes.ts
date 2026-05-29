@@ -23,5 +23,8 @@ export type SessionLine = {
   code: string
   amount: string
   status: string
+  payment_reference?: string
   customer_self_charge_allowed?: boolean
+  customer_message?: string
+  payment_instructions?: import('@/types/compliancePayment').CompliancePaymentInstructions
 }

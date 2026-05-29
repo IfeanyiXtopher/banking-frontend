@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { cn } from '@/utils/cn'
-import { LiveChatProvider } from '@/contexts/LiveChatContext'
 import { PageChromeProvider, usePageChromeOverride } from '@/contexts/PageChromeContext'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import PageToolbar from './PageToolbar'
 import PageAtmosphere from './PageAtmosphere'
 import MobileBottomNav from './MobileBottomNav'
-import LiveChatDock from './LiveChatDock'
 import NotificationsModal from '@/components/notifications/NotificationsModal'
 
 const NO_BACK_PATHS = new Set(['/dashboard'])
@@ -70,9 +68,8 @@ export default function AppLayout() {
   }, [location.pathname])
 
   return (
-    <LiveChatProvider>
-      <PageChromeProvider>
-        <div className="flex h-screen overflow-hidden bg-surface">
+    <PageChromeProvider>
+      <div className="flex h-screen overflow-hidden bg-surface">
           <button
             type="button"
             className={cn(
@@ -83,17 +80,15 @@ export default function AppLayout() {
             onClick={() => setMobileNavOpen(false)}
           />
           <Sidebar mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div id="app-main-pane" className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
             <AppMain
               onOpenMobileMenu={() => setMobileNavOpen(true)}
               onOpenNotifications={() => setNotificationsOpen(true)}
             />
           </div>
           <MobileBottomNav />
-          <LiveChatDock />
           <NotificationsModal open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
         </div>
       </PageChromeProvider>
-    </LiveChatProvider>
   )
 }

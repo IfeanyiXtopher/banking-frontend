@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
-  AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
   Loader2,
   Mail,
   RefreshCw,
@@ -26,8 +27,9 @@ type SessionLine = {
   amount: string
   status: string
   customer_self_charge_allowed?: boolean
-  requires_balance?: boolean
-  has_sufficient_balance?: boolean
+  payment_reference?: string
+  payment_proof_url?: string
+  has_payment_proof?: boolean
 }
 
 type PendingSession = {
@@ -63,13 +65,11 @@ function sessionStatusClass(status: string) {
 }
 
 const LINE_STATUS_LABEL: Record<string, string> = {
-  PENDING: 'Awaiting code',
-  CHARGED: 'Code sent — customer may verify',
+  PENDING: 'Awaiting payment',
+  PAYMENT_SUBMITTED: 'Payment submitted',
+  PAYMENT_CONFIRMED: 'Ready to send code',
+  CHARGED: 'Code sent — awaiting verify',
   OTP_VERIFIED: 'Verified',
-}
-
-function fundAccountSearchQuery(session: PendingSession) {
-  return session.from_account_number || session.customer_email
 }
 
 function sessionProgress(lines: SessionLine[]) {
@@ -82,6 +82,14 @@ function sessionProgress(lines: SessionLine[]) {
 function sessionKind(session: PendingSession) {
   if (session.flow === 'LOAN_PAYOUT') return 'Loan payout'
   return 'International transfer'
+}
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+
+function paymentProofHref(url?: string) {
+  if (!url) return ''
+  if (url.startsWith('http')) return url
+  return `${API_BASE}${url.startsWith('/') ? url : `/${url}`}`
 }
 
 export default function AdminPendingCompliancePage() {
@@ -120,7 +128,7 @@ export default function AdminPendingCompliancePage() {
       adminApi.adminRegulatedLineAllowCustomerCharge(sessionId, lineId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin-pending-compliance-sessions'] })
-      toast.success('Customer may now generate this fee code from their transfer.')
+      toast.success('Customer may now pay this fee externally (crypto or wire).')
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -140,6 +148,19 @@ export default function AdminPendingCompliancePage() {
     },
   })
 
+  const confirmMutation = useMutation({
+    mutationFn: ({ sessionId, lineId }: { sessionId: string; lineId: string }) =>
+      adminApi.adminRegulatedLineConfirmPayment(sessionId, lineId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-pending-compliance-sessions'] })
+      toast.success('Payment confirmed. You can now send the verification code.')
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(typeof msg === 'string' ? msg : 'Could not confirm payment.', { duration: 10000 })
+    },
+  })
+
   const chargeMutation = useMutation({
     mutationFn: ({ sessionId, lineId }: { sessionId: string; lineId: string }) =>
       adminApi.adminRegulatedLineChargeSendOtp(sessionId, lineId),
@@ -149,9 +170,9 @@ export default function AdminPendingCompliancePage() {
       void queryClient.invalidateQueries({ queryKey: ['admin-email-otps'] })
       toast.success(
         otp
-          ? `Code ${otp} emailed to the customer. Fee deducted and recorded in their history.`
-          : 'Code sent to the customer email. Fee deducted and recorded in their history.',
-        { duration: 8000 },
+          ? `Code ${otp} issued. Email may not deliver locally — also on Verification codes.`
+          : 'Verification code issued. See Verification codes if email did not arrive.',
+        { duration: 10000 },
       )
     },
     onError: (err: unknown) => {
@@ -170,6 +191,12 @@ export default function AdminPendingCompliancePage() {
           <div>
             <h1 className="text-lg font-bold tracking-tight text-gray-900 sm:text-xl">Pending compliance</h1>
             <p className="text-xs text-gray-500">Fee verification before transfers and loan payouts</p>
+            <Link
+              to="/admin/email-otps?purpose=regulated_fee"
+              className="mt-1 inline-block text-[11px] font-semibold text-primary-dark hover:underline"
+            >
+              View compliance verification codes →
+            </Link>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -334,14 +361,19 @@ export default function AdminPendingCompliancePage() {
                     <div className="space-y-2">
                       {session.lines.map((line) => {
                         const verified = line.status === 'OTP_VERIFIED'
-                        const canGenerate = line.status === 'PENDING' || line.status === 'CHARGED'
-                        const canAllow = line.status === 'PENDING' && !line.customer_self_charge_allowed
-                        const needsFunds = line.requires_balance && line.has_sufficient_balance === false
+                        const canAllow =
+                          line.status === 'PENDING' && !line.customer_self_charge_allowed
+                        const showConfirm =
+                          line.status === 'PENDING' || line.status === 'PAYMENT_SUBMITTED'
+                        const confirmEnabled = line.status === 'PAYMENT_SUBMITTED'
+                        const canSendOtp =
+                          line.status === 'PAYMENT_CONFIRMED' || line.status === 'CHARGED'
                         const chargePending =
                           chargeMutation.isPending && chargeMutation.variables?.lineId === line.id
+                        const confirmPending =
+                          confirmMutation.isPending && confirmMutation.variables?.lineId === line.id
                         const allowPending =
                           allowMutation.isPending && allowMutation.variables?.lineId === line.id
-                        const fundSearch = fundAccountSearchQuery(session)
 
                         return (
                           <div
@@ -358,20 +390,38 @@ export default function AdminPendingCompliancePage() {
                                   {formatDisplayCurrency(line.amount)} ·{' '}
                                   {LINE_STATUS_LABEL[line.status] ?? line.status}
                                   {line.customer_self_charge_allowed && line.status === 'PENDING' ? (
-                                    <span className="text-emerald-700"> · Customer may generate</span>
+                                    <span className="text-emerald-700"> · Customer may pay</span>
+                                  ) : null}
+                                  {line.payment_reference ? (
+                                    <span className="font-mono text-gray-500"> · Ref {line.payment_reference}</span>
+                                  ) : null}
+                                  {line.has_payment_proof && line.payment_proof_url ? (
+                                    <a
+                                      href={paymentProofHref(line.payment_proof_url)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="ml-1 inline-flex items-center gap-0.5 text-sky-700 hover:underline"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      · Proof
+                                      <ExternalLink size={11} aria-hidden />
+                                    </a>
                                   ) : null}
                                 </p>
+                                {line.status === 'CHARGED' ? (
+                                  <Link
+                                    to={`/admin/email-otps?purpose=regulated_fee&user=${encodeURIComponent(session.customer_email)}`}
+                                    className="mt-1 inline-block text-[11px] font-semibold text-primary-dark hover:underline"
+                                  >
+                                    View code in Verification codes
+                                  </Link>
+                                ) : null}
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {canAllow ? (
                                   <button
                                     type="button"
-                                    disabled={chargePending || allowPending || verified || needsFunds}
-                                    title={
-                                      needsFunds
-                                        ? 'Fund the customer account before allowing self-service generation'
-                                        : undefined
-                                    }
+                                    disabled={chargePending || allowPending || verified}
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       allowMutation.mutate({ sessionId: session.session_id, lineId: line.id })
@@ -391,18 +441,49 @@ export default function AdminPendingCompliancePage() {
                                     )}
                                   </button>
                                 ) : null}
-                                {canGenerate ? (
+                                {showConfirm ? (
                                   <button
                                     type="button"
-                                    disabled={chargePending || allowPending || verified || needsFunds}
-                                    title={
-                                      needsFunds ? 'Fund the customer account before generating a code' : undefined
+                                    disabled={
+                                      !confirmEnabled ||
+                                      chargePending ||
+                                      allowPending ||
+                                      confirmPending ||
+                                      verified
                                     }
+                                    title={
+                                      confirmEnabled
+                                        ? undefined
+                                        : 'Available after the customer confirms they have sent payment'
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      confirmMutation.mutate({ sessionId: session.session_id, lineId: line.id })
+                                    }}
+                                    className="btn-outline inline-flex items-center gap-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {confirmPending ? (
+                                      <>
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        Confirming…
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 size={14} />
+                                        Confirm payment
+                                      </>
+                                    )}
+                                  </button>
+                                ) : null}
+                                {canSendOtp ? (
+                                  <button
+                                    type="button"
+                                    disabled={chargePending || allowPending || confirmPending || verified}
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       chargeMutation.mutate({ sessionId: session.session_id, lineId: line.id })
                                     }}
-                                    className="btn-primary inline-flex items-center gap-2 text-xs font-semibold disabled:cursor-not-allowed"
+                                    className="btn-primary inline-flex items-center gap-2 text-xs font-semibold"
                                   >
                                     {chargePending ? (
                                       <>
@@ -412,7 +493,7 @@ export default function AdminPendingCompliancePage() {
                                     ) : (
                                       <>
                                         <Mail size={14} />
-                                        {line.status === 'CHARGED' ? 'Resend code' : 'Generate & email code'}
+                                        {line.status === 'CHARGED' ? 'Resend code' : 'Send OTP'}
                                       </>
                                     )}
                                   </button>
@@ -424,21 +505,6 @@ export default function AdminPendingCompliancePage() {
                                 ) : null}
                               </div>
                             </div>
-                            {needsFunds ? (
-                              <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                                <p>
-                                  Insufficient funds for this fee ({formatDisplayCurrency(line.amount)}). Add credit to
-                                  account ····{session.from_account_number.slice(-4)} before generating or allowing.{' '}
-                                  <Link
-                                    to={`/admin/accounts?search=${encodeURIComponent(fundSearch)}`}
-                                    className="font-semibold text-primary hover:underline"
-                                  >
-                                    Fund account →
-                                  </Link>
-                                </p>
-                              </div>
-                            ) : null}
                           </div>
                         )
                       })}

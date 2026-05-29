@@ -44,7 +44,6 @@ import {
   generateMockUetr,
   internationalFieldDefaults,
   internationalZodShape,
-  DELIVERY_METHOD_LABEL,
   type InternationalTransferFormValues,
   validateInternationalFields,
 } from './internationalTransfer'
@@ -205,7 +204,7 @@ export default function TransferPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<FlowTab>('transfer')
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 3>(1)
   const [transferOtp, setTransferOtp] = useState('')
   const [regulatedSessionId, setRegulatedSessionId] = useState<string | null>(null)
   const [complianceModalOpen, setComplianceModalOpen] = useState(false)
@@ -268,7 +267,7 @@ export default function TransferPage() {
 
   const previewEnabled =
     tab === 'transfer' &&
-    step === 2 &&
+    step === 1 &&
     !!tWatch.account_id &&
     !!tWatch.amount &&
     /^\d+(\.\d{1,2})?$/.test(tWatch.amount) &&
@@ -532,15 +531,8 @@ export default function TransferPage() {
   }
 
   const handleTransferBack = useCallback(() => {
-    if (step === 1) navigate(-1)
-    else {
-      resetTransferOtpFlow()
-      setRegulatedSessionId(null)
-      regulatedSessionIdempotencyRef.current = null
-      setComplianceModalOpen(false)
-      setStep(1)
-    }
-  }, [step, navigate, resetTransferOtpFlow])
+    navigate(-1)
+  }, [navigate])
 
   const transferSuccess = step === 3 && tab === 'transfer'
   const transferChrome = useMemo(
@@ -553,26 +545,17 @@ export default function TransferPage() {
           }
         : {
             showBack: true,
-            backLabel: step === 1 ? 'Back' : 'Edit details',
+            backLabel: 'Back',
             onBack: handleTransferBack,
           },
     [transferSuccess, step, handleTransferBack, navigate],
   )
   usePageChrome(transferChrome)
 
-  const goTransferReview = transferForm.handleSubmit(() => {
-    if (insufficientFundsStep1) {
-      transferForm.setError('amount', { type: 'manual', message: insufficientFundsMessage })
-      return
-    }
-    resetTransferOtpFlow()
-    setRegulatedSessionId(null)
-    setComplianceModalOpen(false)
-    regulatedSessionIdempotencyRef.current = uuidv4()
-    setStep(2)
-  })
-
   const confirmTransfer = transferForm.handleSubmit((d) => {
+    if (!regulatedSessionIdempotencyRef.current) {
+      regulatedSessionIdempotencyRef.current = uuidv4()
+    }
     if (preview?.requires_regulated_session) {
       const o = transferOtp.replace(/\D/g, '').slice(0, 6)
       if (o.length !== 6) {
@@ -680,7 +663,7 @@ export default function TransferPage() {
       preview.requires_regulated_session === true)
 
   const transferOtpAutoKey = useMemo(() => {
-    if (step !== 2 || !previewEnabled) return ''
+    if (step !== 1 || !previewEnabled) return ''
     return [
       tWatch.account_id,
       tWatch.amount,
@@ -707,7 +690,7 @@ export default function TransferPage() {
   }, [otpResendSecondsLeft > 0])
 
   useEffect(() => {
-    if (step !== 2 || !reviewNeedsTransferOtp || previewLoading || !preview || !transferOtpAutoKey) return
+    if (step !== 1 || !reviewNeedsTransferOtp || previewLoading || !preview || !transferOtpAutoKey) return
     if (lastAutoOtpKeyRef.current === transferOtpAutoKey) return
     lastAutoOtpKeyRef.current = transferOtpAutoKey
     sendOtpMutation.mutate()
@@ -761,25 +744,16 @@ export default function TransferPage() {
                 <span
                   className={cn(
                     'flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold',
-                    step >= 1 ? 'bg-accent text-primary-dark' : 'bg-white/15 text-white/60',
+                    step === 1 ? 'bg-accent text-primary-dark' : 'bg-white/15 text-white/60',
                   )}
                 >
                   1
                 </span>
-                <div className={cn('h-0.5 w-5 rounded-full', step >= 2 ? 'bg-accent' : 'bg-white/20')} />
+                <div className={cn('h-0.5 w-5 rounded-full', step === 3 ? 'bg-accent' : 'bg-white/20')} />
                 <span
                   className={cn(
                     'flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold',
-                    step >= 2 ? 'bg-accent text-primary-dark' : 'bg-white/15 text-white/60',
-                  )}
-                >
-                  2
-                </span>
-                <div className={cn('h-0.5 w-5 rounded-full', step >= 3 ? 'bg-accent' : 'bg-white/20')} />
-                <span
-                  className={cn(
-                    'flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold',
-                    step >= 3 ? 'bg-accent text-primary-dark' : 'bg-white/15 text-white/60',
+                    step === 3 ? 'bg-accent text-primary-dark' : 'bg-white/15 text-white/60',
                   )}
                 >
                   ✓
@@ -840,7 +814,7 @@ export default function TransferPage() {
         <div
           className={cn(
             'relative -mt-px overflow-hidden rounded-b-2xl border border-t-0 border-gray-200/90 bg-white shadow-[0_4px_24px_-8px_rgba(21,42,30,0.06)]',
-            complianceModalOpen && tab === 'transfer' && step === 2 && 'min-h-[min(85vh,720px)]',
+            complianceModalOpen && tab === 'transfer' && step === 1 && 'min-h-[min(85vh,720px)]',
             tab === 'card' && cardUnavailableModalOpen && 'min-h-[min(70vh,640px)]',
           )}
         >
@@ -991,253 +965,154 @@ export default function TransferPage() {
                 )}
                 <Input label="Note (optional)" placeholder="What is this payment for?" {...transferForm.register('description')} />
 
-                <button
-                  type="button"
-                  onClick={goTransferReview}
-                  disabled={insufficientFundsStep1}
-                  className="btn-primary w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  Continue to review
-                </button>
-              </form>
-            )}
+                {previewEnabled ? (
+                  <div className="space-y-6 border-t border-gray-100 pt-6">
+                    <h2 className="text-lg font-semibold text-gray-900">Fees &amp; confirmation</h2>
 
-            {tab === 'transfer' && step === 2 && (
-              <div className="space-y-6">
-                <h2 className="text-lg font-semibold text-gray-900">Review &amp; fees</h2>
+                    <dl className="divide-y divide-gray-100 rounded-2xl border border-gray-100 bg-gray-50/50">
+                      <div className="flex justify-between gap-4 px-4 py-3">
+                        <dt className="text-sm text-gray-500">From</dt>
+                        <dd className="text-right text-sm font-medium text-gray-900">
+                          {fromAcc ? (
+                            <>
+                              {fromAcc.account_type} ···· {fromAcc.account_number.slice(-4)}
+                            </>
+                          ) : (
+                            '—'
+                          )}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-4 px-4 py-3">
+                        <dt className="text-sm text-gray-500">To</dt>
+                        <dd className="text-right text-sm font-medium text-gray-900">{toDisplay}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4 px-4 py-3">
+                        <dt className="text-sm text-gray-500">You send</dt>
+                        <dd className="text-sm font-semibold tabular-nums text-gray-900">
+                          {tWatch.transfer_type === 'TRANSFER_INTERNATIONAL'
+                            ? `${formatDisplayCurrency(tWatch.amount || '0')} ${tWatch.transfer_currency}`
+                            : formatDisplayCurrency(tWatch.amount || '0')}
+                        </dd>
+                      </div>
+                    </dl>
 
-                <dl className="divide-y divide-gray-100 rounded-2xl border border-gray-100 bg-gray-50/50">
-                  <div className="flex justify-between gap-4 px-4 py-3">
-                    <dt className="text-sm text-gray-500">From</dt>
-                    <dd className="text-right text-sm font-medium text-gray-900">
-                      {fromAcc ? (
-                        <>
-                          {fromAcc.account_type} ···· {fromAcc.account_number.slice(-4)}
-                        </>
+                    <div className="rounded-2xl border border-primary-dark/15 bg-primary-dark/[0.04] px-4 py-4">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-dark">
+                        <Building2 size={14} />
+                        Fees &amp; settlement
+                      </div>
+                      {previewLoading ? (
+                        <div className="mt-4 flex justify-center py-6">
+                          <Spinner />
+                        </div>
+                      ) : previewError || !preview ? (
+                        <p className="mt-3 text-sm text-amber-800">
+                          {transferPreviewErrorMessage(previewQueryError) ||
+                            'Could not calculate fees. Check the destination account and amount.'}
+                        </p>
                       ) : (
-                        '—'
-                      )}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-4 px-4 py-3">
-                    <dt className="text-sm text-gray-500">To</dt>
-                    <dd className="text-right text-sm font-medium text-gray-900">{toDisplay}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4 px-4 py-3">
-                    <dt className="text-sm text-gray-500">You send</dt>
-                    <dd className="text-sm font-semibold tabular-nums text-gray-900">
-                      {tWatch.transfer_type === 'TRANSFER_INTERNATIONAL'
-                        ? `${formatDisplayCurrency(tWatch.amount || '0')} ${tWatch.transfer_currency}`
-                        : formatDisplayCurrency(tWatch.amount || '0')}
-                    </dd>
-                  </div>
-                  {tWatch.transfer_type === 'TRANSFER_INTERNATIONAL' ? (
-                    <>
-                      <div className="flex justify-between gap-4 px-4 py-3">
-                        <dt className="text-sm text-gray-500">Delivery</dt>
-                        <dd className="text-sm font-medium text-gray-900">{DELIVERY_METHOD_LABEL}</dd>
-                      </div>
-                      <div className="flex justify-between gap-4 px-4 py-3">
-                        <dt className="text-sm text-gray-500">Beneficiary type</dt>
-                        <dd className="text-sm font-medium text-gray-900">{tWatch.beneficiary_type}</dd>
-                      </div>
-                    </>
-                  ) : null}
-                  {tWatch.description ? (
-                    <div className="flex justify-between gap-4 px-4 py-3">
-                      <dt className="text-sm text-gray-500">Note</dt>
-                      <dd className="max-w-[60%] text-right text-sm text-gray-700">{tWatch.description}</dd>
-                    </div>
-                  ) : null}
-                  {tWatch.transfer_type === 'TRANSFER_INTERNATIONAL' ? (
-                    <div className="px-4 py-3">
-                      <dt className="text-sm font-semibold text-gray-800">International instruction</dt>
-                      <dd className="mt-2 space-y-2 text-xs leading-relaxed text-gray-600">
-                        <div>
-                          <span className="font-medium text-gray-700">Beneficiary</span>
-                          <div className="mt-0.5 pl-2 border-l border-gray-200">
-                            <div>{tWatch.beneficiary_legal_name || '—'}</div>
-                            <div className="text-gray-500">
-                              {[tWatch.beneficiary_address_line1, tWatch.beneficiary_address_line2?.trim()].filter(Boolean).join(', ') || '—'}
-                            </div>
-                            <div>
-                              {[tWatch.beneficiary_postal_code, tWatch.beneficiary_city, tWatch.beneficiary_region_state?.trim()]
-                                .filter(Boolean)
-                                .join(' · ') || '—'}{' '}
-                              ({tWatch.beneficiary_country || '—'})
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <span className="font-medium text-gray-700">Beneficiary bank</span>
-                          <div className="mt-0.5 pl-2 border-l border-gray-200">
-                            <div>{tWatch.beneficiary_bank_name || '—'}</div>
-                            <div className="text-gray-500">
-                              {[tWatch.beneficiary_bank_address_line1, tWatch.beneficiary_bank_address_line2?.trim()]
-                                .filter(Boolean)
-                                .join(', ') || '—'}
-                            </div>
-                            <div>
-                              {tWatch.beneficiary_bank_city || '—'} ({tWatch.beneficiary_bank_country || '—'})
-                            </div>
-                            <div className="font-mono text-[11px]">
-                              BIC {tWatch.beneficiary_bic_swift || '—'}
-                              {tWatch.account_number_type === 'IBAN'
-                                ? ` · IBAN ${tWatch.beneficiary_iban || '—'}`
-                                : tWatch.account_number_type === 'UK_SORT'
-                                  ? ` · Sort ${tWatch.beneficiary_sort_code} · Acct ${tWatch.beneficiary_account_number}`
-                                  : tWatch.account_number_type === 'US_ROUTING'
-                                    ? ` · Routing ${tWatch.beneficiary_routing_number} · Acct ${tWatch.beneficiary_account_number}`
-                                    : ` · Acct ${tWatch.beneficiary_account_number || '—'}`}
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <span className="font-medium text-gray-700">Payment reference</span>
-                          <div className="mt-0.5 pl-2 border-l border-gray-200">
-                            <div>Reference: {tWatch.remittance_reference || '—'}</div>
-                            <div>Purpose: {tWatch.purpose_of_payment || '—'}</div>
-                          </div>
-                        </div>
-                                                {(tWatch.intermediary_bank_bic?.trim() || tWatch.intermediary_bank_name?.trim()) && (
-                          <div>
-                            <span className="font-medium text-gray-700">Intermediary</span>
-                            <div className="mt-0.5 pl-2 font-mono text-[11px]">
-                              {tWatch.intermediary_bank_name?.trim() || '—'} · {tWatch.intermediary_bank_bic?.trim() || '—'}
-                            </div>
-                          </div>
-                        )}
-                        {tWatch.instructions_to_beneficiary_bank?.trim() ? (
-                          <div>
-                            <span className="font-medium text-gray-700">Instructions to bank</span>
-                            <div className="mt-0.5 pl-2">{tWatch.instructions_to_beneficiary_bank}</div>
-                          </div>
-                        ) : null}
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-
-                <div className="rounded-2xl border border-primary-dark/15 bg-primary-dark/[0.04] px-4 py-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-dark">
-                    <Building2 size={14} />
-                    Fees &amp; settlement
-                  </div>
-                  {previewLoading ? (
-                    <div className="mt-4 flex justify-center py-6">
-                      <Spinner />
-                    </div>
-                  ) : previewError || !preview ? (
-                    <p className="mt-3 text-sm text-amber-800">
-                      {transferPreviewErrorMessage(previewQueryError) ||
-                        'Could not calculate fees. Check the destination account and amount.'}
-                    </p>
-                  ) : (
-                    <>
-                      <ul className="mt-3 space-y-2">
-                        {previewFeesNonCompliance.map((line) => (
-                          <li key={line.code + line.label} className="flex justify-between gap-3 text-sm">
-                            <span className="text-gray-600">{line.label}</span>
-                            <span className="font-mono tabular-nums text-gray-900">
-                              {line.is_rate ? line.amount : formatDisplayCurrency(line.amount)}
-                            </span>
-                          </li>
-                        ))}
-                        {preview.currency !== preview.credited_currency ||
-                        (preview.fee_billing === 'net_of_recipient' && parseFloat(preview.fee_total || '0') > 0) ? (
-                          <li className="flex justify-between gap-3 border-t border-gray-200/80 pt-2 text-sm">
-                            <span className="text-gray-600">Recipient receives (approx.)</span>
-                            <span className="font-semibold tabular-nums text-gray-900">
-                              {formatDisplayCurrency(preview.credited_amount)} {preview.credited_currency}
-                            </span>
-                          </li>
-                        ) : null}
-                        {preview.fee_billing === 'net_of_recipient' && parseFloat(preview.fee_total || '0') > 0 ? (
-                          <li className="text-xs text-gray-500">
-                            Transfer fee is deducted from what the recipient receives (same currency).
-                          </li>
-                        ) : null}
-                      </ul>
-
-                      {reviewNeedsTransferOtp ? (
-                        <div className="mt-4 space-y-2 border-t border-gray-200/80 pt-4 text-sm">
-                          <p className="text-gray-700">
-                            This transfer requires email verification. We email a code when you open this
-                            page — enter it below.
-                          </p>
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                            <div className="flex min-w-[9.5rem] shrink-0 items-center sm:justify-center">
-                              {sendOtpMutation.isPending ? (
-                                <span className="text-xs font-medium text-gray-500">Sending code…</span>
-                              ) : otpResendSecondsLeft > 0 ? (
-                                <span className="text-xs font-medium tabular-nums text-gray-500">
-                                  Resend in {otpResendSecondsLeft}s
+                        <>
+                          <ul className="mt-3 space-y-2">
+                            {previewFeesNonCompliance.map((line) => (
+                              <li key={line.code + line.label} className="flex justify-between gap-3 text-sm">
+                                <span className="text-gray-600">{line.label}</span>
+                                <span className="font-mono tabular-nums text-gray-900">
+                                  {line.is_rate ? line.amount : formatDisplayCurrency(line.amount)}
                                 </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled={previewLoading || !preview}
-                                  onClick={resendTransferOtp}
-                                  className="btn-outline px-4 py-2 text-xs font-semibold"
-                                >
-                                  Resend OTP
-                                </button>
-                              )}
+                              </li>
+                            ))}
+                            {preview.currency !== preview.credited_currency ||
+                            (preview.fee_billing === 'net_of_recipient' && parseFloat(preview.fee_total || '0') > 0) ? (
+                              <li className="flex justify-between gap-3 border-t border-gray-200/80 pt-2 text-sm">
+                                <span className="text-gray-600">Recipient receives (approx.)</span>
+                                <span className="font-semibold tabular-nums text-gray-900">
+                                  {formatDisplayCurrency(preview.credited_amount)} {preview.credited_currency}
+                                </span>
+                              </li>
+                            ) : null}
+                          </ul>
+
+                          {reviewNeedsTransferOtp ? (
+                            <div className="mt-4 space-y-2 border-t border-gray-200/80 pt-4 text-sm">
+                              <p className="text-gray-700">
+                                This transfer requires email verification. We email a code when your details are
+                                complete — enter it below.
+                              </p>
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <div className="flex min-w-[9.5rem] shrink-0 items-center sm:justify-center">
+                                  {sendOtpMutation.isPending ? (
+                                    <span className="text-xs font-medium text-gray-500">Sending code…</span>
+                                  ) : otpResendSecondsLeft > 0 ? (
+                                    <span className="text-xs font-medium tabular-nums text-gray-500">
+                                      Resend in {otpResendSecondsLeft}s
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={previewLoading || !preview}
+                                      onClick={resendTransferOtp}
+                                      className="btn-outline px-4 py-2 text-xs font-semibold"
+                                    >
+                                      Resend OTP
+                                    </button>
+                                  )}
+                                </div>
+                                <input
+                                  className="input-field max-w-xs font-mono text-sm tracking-widest"
+                                  placeholder="6-digit code"
+                                  inputMode="numeric"
+                                  maxLength={8}
+                                  autoComplete="one-time-code"
+                                  value={transferOtp}
+                                  onChange={(e) => setTransferOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                />
+                              </div>
+                              {TRANSFER_UI_MOCK && reviewNeedsTransferOtp ? (
+                                <p className="text-xs text-violet-900/90">
+                                  Demo: use transfer code{' '}
+                                  <code className="rounded bg-violet-100/90 px-1.5 py-0.5 font-mono font-semibold">
+                                    {MOCK_TRANSFER_OTP}
+                                  </code>
+                                  .
+                                </p>
+                              ) : null}
                             </div>
-                            <input
-                              className="input-field max-w-xs font-mono text-sm tracking-widest"
-                              placeholder="6-digit code"
-                              inputMode="numeric"
-                              maxLength={8}
-                              autoComplete="one-time-code"
-                              value={transferOtp}
-                              onChange={(e) => setTransferOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            />
-                          </div>
-                          {TRANSFER_UI_MOCK && reviewNeedsTransferOtp ? (
-                            <p className="text-xs text-violet-900/90">
-                              Demo: use transfer code{' '}
-                              <code className="rounded bg-violet-100/90 px-1.5 py-0.5 font-mono font-semibold">
-                                {MOCK_TRANSFER_OTP}
-                              </code>
-                              .
-                            </p>
                           ) : null}
-                        </div>
-                      ) : null}
 
-                      <div className="mt-4 flex justify-between gap-3 border-t border-primary-dark/10 pt-3 text-base font-bold text-primary-dark">
-                        <span>Total debited from your account</span>
-                        <span className="tabular-nums">{formatDisplayCurrency(preview.total_debit)}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
+                          <div className="mt-4 flex justify-between gap-3 border-t border-primary-dark/10 pt-3 text-base font-bold text-primary-dark">
+                            <span>Total debited from your account</span>
+                            <span className="tabular-nums">{formatDisplayCurrency(preview.total_debit)}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={() => { resetTransferOtpFlow(); setRegulatedSessionId(null); regulatedSessionIdempotencyRef.current = null; setComplianceModalOpen(false); setStep(1) }} className="btn-outline flex-1 py-3 text-sm font-semibold">
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      transferMutation.isPending ||
-                      intlSessionMutation.isPending ||
-                      previewLoading ||
-                      !preview ||
-                      insufficientFundsStep2 ||
-                      (reviewNeedsTransferOtp && transferOtp.length !== 6)
-                    }
-                    onClick={() => confirmTransfer()}
-                    className="btn-primary flex flex-1 items-center justify-center gap-2 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-55"
-                  >
-                    {(transferMutation.isPending || intlSessionMutation.isPending) && (
-                      <Spinner size="sm" className="border-white border-t-white/30" />
-                    )}
-                    Confirm &amp; send
-                  </button>
-                </div>
-              </div>
+                    <button
+                      type="button"
+                      disabled={
+                        transferMutation.isPending ||
+                        intlSessionMutation.isPending ||
+                        previewLoading ||
+                        !preview ||
+                        insufficientFundsStep1 ||
+                        insufficientFundsStep2 ||
+                        (reviewNeedsTransferOtp && transferOtp.length !== 6)
+                      }
+                      onClick={() => confirmTransfer()}
+                      className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      {(transferMutation.isPending || intlSessionMutation.isPending) && (
+                        <Spinner size="sm" className="border-white border-t-white/30" />
+                      )}
+                      Confirm &amp; send
+                    </button>
+                  </div>
+                ) : (
+                  <p className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                    Complete all required fields above to see fees and confirm your transfer.
+                  </p>
+                )}
+              </form>
             )}
 
             {tab === 'card' && step === 1 && (

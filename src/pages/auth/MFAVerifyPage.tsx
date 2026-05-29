@@ -43,6 +43,7 @@ export default function MFAVerifyPage() {
         </div>
 
         <AuthFormHeader
+          centered
           title="Verify your identity"
           subtitle={
             email

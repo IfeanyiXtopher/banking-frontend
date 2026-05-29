@@ -60,6 +60,7 @@ import AdminPendingCompliancePage from '@/pages/admin/AdminPendingCompliancePage
 import LandingPage from '@/pages/landing/LandingPage'
 import CompleteProfilePage from '@/pages/onboarding/CompleteProfilePage'
 import AdminProfileRequestsPage from '@/pages/admin/AdminProfileRequestsPage'
+import CompliancePaymentMockPage from '@/pages/dev/CompliancePaymentMockPage'
 
 function AuthHydrationGate({ children }: { children: React.ReactNode }) {
   const hasHydrated = useAuthStore((s) => s._hasHydrated)
@@ -214,6 +215,7 @@ export default function AppRouter() {
           <Route path="notifications" element={<SettingsNotificationsPage />} />
           <Route path="linked-accounts" element={<SettingsLinkedAccountsPage />} />
         </Route>
+        <Route path="/dev/compliance-payment-mock" element={<CompliancePaymentMockPage />} />
         </Route>
       </Route>
 

@@ -45,8 +45,8 @@ function userInitials(name: string) {
 
 function otpStatus(r: OtpRow): { label: string; className: string } {
   if (r.purpose === 'regulated_fee') {
-    return r.is_expired
-      ? { label: 'Expired', className: 'bg-amber-50 text-amber-900 ring-amber-100' }
+    return r.is_used
+      ? { label: 'Used', className: 'bg-gray-100 text-gray-700 ring-gray-200' }
       : { label: 'Valid', className: 'bg-emerald-50 text-emerald-800 ring-emerald-100' }
   }
   if (r.is_used) return { label: 'Used', className: 'bg-gray-100 text-gray-700 ring-gray-200' }
@@ -135,6 +135,10 @@ export default function AdminEmailOtpPage() {
             <h1 className="text-lg font-bold tracking-tight text-gray-900 sm:text-xl">Verification codes</h1>
             <p className="text-xs text-gray-500">
               Login MFA, transfers, and compliance fees · auto-refresh 15s
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+              Codes are stored here even when email is not configured locally. Share the 6-digit code with
+              the customer if they did not receive email.
             </p>
           </div>
         </div>

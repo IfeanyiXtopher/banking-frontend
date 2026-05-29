@@ -1,5 +1,3 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form'
 import { Input } from '@/components/forms/Input'
 import { LocationCombobox } from '@/components/forms/LocationCombobox'
@@ -50,7 +48,6 @@ export default function InternationalTransferFormSections({
   exchangeRateLabel,
   amountBalanceError,
 }: Props) {
-  const [advancedOpen, setAdvancedOpen] = useState(false)
   const { data: csc, isLoading: locationLoading } = useLocationDataset()
   const beneficiaryCountry = w('beneficiary_country')
   const beneficiaryState = w('beneficiary_region_state')
@@ -346,61 +343,46 @@ export default function InternationalTransferFormSections({
         />
       </div>
 
-      {/* Advanced */}
-      <div className={selectShell}>
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen((o) => !o)}
-          className="flex w-full items-center justify-between gap-2 py-3 pl-4 pr-4 text-left text-sm font-semibold text-emerald-950"
-        >
-          Advanced options
-          <span className="shrink-0 text-emerald-700">
-            {advancedOpen ? <ChevronUp size={18} strokeWidth={2} /> : <ChevronDown size={18} strokeWidth={2} />}
-          </span>
-        </button>
-        {advancedOpen ? (
-          <div className="space-y-4 border-t border-emerald-200/60 px-4 pb-4 pt-3">
-            <p className="text-[11px] text-emerald-900/80">
-              Correspondent bank, extra address lines, and instructions to the beneficiary bank. Not required for
-              most retail transfers.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="Beneficiary address line 2"
-                error={errors.beneficiary_address_line2?.message}
-                {...register('beneficiary_address_line2')}
-              />
-              <Input
-                label="Region / state"
-                error={errors.beneficiary_region_state?.message}
-                {...register('beneficiary_region_state')}
-              />
-              <Input
-                label="Bank street address line 1"
-                error={errors.beneficiary_bank_address_line1?.message}
-                {...register('beneficiary_bank_address_line1')}
-              />
-              <Input
-                label="Intermediary bank name"
-                error={errors.intermediary_bank_name?.message}
-                {...register('intermediary_bank_name')}
-              />
-              <Input
-                label="Intermediary BIC"
-                className="font-mono uppercase"
-                error={errors.intermediary_bank_bic?.message}
-                {...register('intermediary_bank_bic')}
-              />
-              <div className="sm:col-span-2">
-                <Input
-                  label="Instructions to beneficiary bank"
-                  error={errors.instructions_to_beneficiary_bank?.message}
-                  {...register('instructions_to_beneficiary_bank')}
-                />
-              </div>
-            </div>
+      {/* Correspondent & extra details */}
+      <div className="space-y-3">
+        <SectionTitle hint="Optional correspondent bank, extra address lines, and instructions.">
+          Additional details
+        </SectionTitle>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Beneficiary address line 2"
+            error={errors.beneficiary_address_line2?.message}
+            {...register('beneficiary_address_line2')}
+          />
+          <Input
+            label="Region / state"
+            error={errors.beneficiary_region_state?.message}
+            {...register('beneficiary_region_state')}
+          />
+          <Input
+            label="Bank street address line 1"
+            error={errors.beneficiary_bank_address_line1?.message}
+            {...register('beneficiary_bank_address_line1')}
+          />
+          <Input
+            label="Intermediary bank name"
+            error={errors.intermediary_bank_name?.message}
+            {...register('intermediary_bank_name')}
+          />
+          <Input
+            label="Intermediary BIC"
+            className="font-mono uppercase"
+            error={errors.intermediary_bank_bic?.message}
+            {...register('intermediary_bank_bic')}
+          />
+          <div className="sm:col-span-2">
+            <Input
+              label="Instructions to beneficiary bank"
+              error={errors.instructions_to_beneficiary_bank?.message}
+              {...register('instructions_to_beneficiary_bank')}
+            />
           </div>
-        ) : null}
+        </div>
       </div>
     </div>
   )

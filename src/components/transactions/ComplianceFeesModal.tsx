@@ -15,6 +15,9 @@ import {
   createInitialMockComplianceLines,
 } from '@/pages/transactions/transferMock'
 import type { SessionLine } from '@/pages/transactions/transferTypes'
+import { complianceCustomerMessage } from '@/constants/compliance'
+import CompliancePaymentModal from '@/components/transactions/CompliancePaymentModal'
+import type { CompliancePaymentInstructions } from '@/types/compliancePayment'
 
 type RegSession = {
   session_id: string
@@ -30,6 +33,8 @@ type Props = {
   flow?: 'international' | 'loan'
   loanApplicationId?: string
   disbursementAccountId?: string
+  /** Center overlay in main content (excludes sidebar), not full viewport */
+  anchorToMain?: boolean
 }
 
 export default function ComplianceFeesModal({
@@ -40,14 +45,26 @@ export default function ComplianceFeesModal({
   flow = 'international',
   loanApplicationId,
   disbursementAccountId,
+  anchorToMain = true,
 }: Props) {
   const isLoan = flow === 'loan'
   const queryClient = useQueryClient()
   const [complianceOtps, setComplianceOtps] = useState<Record<string, string>>({})
-  const [chargeInsufficientMsg, setChargeInsufficientMsg] = useState<string | null>(null)
+  const [chargeFeedbackMsg, setChargeFeedbackMsg] = useState<string | null>(null)
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [phase, setPhase] = useState<'loading' | 'lines' | 'submitting'>('loading')
   const mockSessionRef = useRef<{ lines: SessionLine[]; status: string } | null>(null)
   const [mockSession, setMockSession] = useState<{ lines: SessionLine[]; status: string } | null>(null)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
+  const otpInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!anchorToMain) {
+      setPortalTarget(document.body)
+      return
+    }
+    setPortalTarget(document.getElementById('app-main-pane') ?? document.body)
+  }, [anchorToMain, open])
 
   const effectiveSessionId = TRANSFER_UI_MOCK && open ? MOCK_REG_SESSION_ID : sessionId
 
@@ -55,13 +72,24 @@ export default function ComplianceFeesModal({
     queryKey: ['regulated-session', effectiveSessionId],
     queryFn: () => transactionsApi.regulatedSessionDetail(effectiveSessionId!),
     enabled: open && !!effectiveSessionId && !TRANSFER_UI_MOCK,
-    refetchInterval: open && !TRANSFER_UI_MOCK ? 5000 : false,
+    refetchInterval: (query) => {
+      if (!open || TRANSFER_UI_MOCK) return false
+      const lines = (query.state.data?.data as RegSession | undefined)?.lines ?? []
+      const waiting = lines.some(
+        (line) =>
+          line.status !== 'OTP_VERIFIED' &&
+          (line.status === 'PAYMENT_SUBMITTED' || line.status === 'PAYMENT_CONFIRMED'),
+      )
+      return waiting ? 2000 : 5000
+    },
+    refetchOnWindowFocus: true,
   })
 
   useEffect(() => {
     if (!open) {
       setComplianceOtps({})
-      setChargeInsufficientMsg(null)
+      setChargeFeedbackMsg(null)
+      setPaymentModalOpen(false)
       setPhase('loading')
       mockSessionRef.current = null
       setMockSession(null)
@@ -99,14 +127,22 @@ export default function ComplianceFeesModal({
   }, [regSession?.lines])
 
   useEffect(() => {
-    setChargeInsufficientMsg(null)
+    setChargeFeedbackMsg(null)
   }, [activeLine?.id])
 
+  const canEnterOtp = activeLine?.status === 'CHARGED'
+
   useEffect(() => {
-    if (!chargeInsufficientMsg) return
-    const timer = window.setTimeout(() => setChargeInsufficientMsg(null), 4000)
+    if (canEnterOtp) {
+      otpInputRef.current?.focus()
+    }
+  }, [activeLine?.id, canEnterOtp])
+
+  useEffect(() => {
+    if (!chargeFeedbackMsg) return
+    const timer = window.setTimeout(() => setChargeFeedbackMsg(null), 4000)
     return () => window.clearTimeout(timer)
-  }, [chargeInsufficientMsg])
+  }, [chargeFeedbackMsg])
 
   const lineBlocked = (line: SessionLine) => {
     const lines = regSession?.lines ?? []
@@ -158,37 +194,35 @@ export default function ComplianceFeesModal({
     },
   })
 
-  const chargeMutation = useMutation({
-    mutationFn: async (lineId: string) => {
-      if (TRANSFER_UI_MOCK) {
-        await new Promise((r) => setTimeout(r, 300))
-        const prev = mockSessionRef.current
-        if (!prev) return {}
-        const next = {
-          ...prev,
-          lines: prev.lines.map((l) => (l.id === lineId ? { ...l, status: 'CHARGED' } : l)),
-        }
-        mockSessionRef.current = next
-        setMockSession(next)
-        return {}
-      }
-      return transactionsApi.regulatedLineChargeSendOtp(effectiveSessionId!, lineId)
-    },
-    onMutate: () => {
-      setChargeInsufficientMsg(null)
-    },
+  const submitPaymentMutation = useMutation({
+    mutationFn: ({ lineId, proof }: { lineId: string; proof?: File | null }) =>
+      transactionsApi.regulatedLineSubmitPayment(effectiveSessionId!, lineId, proof ?? undefined),
     onSuccess: () => {
-      setChargeInsufficientMsg(null)
-      if (!TRANSFER_UI_MOCK) {
-        void refetch()
-        toast.success('Verification code sent to your email.')
-      }
+      setPaymentModalOpen(false)
+      void refetch()
+      toast.success('Payment submitted. We will email your code once confirmed.')
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setChargeInsufficientMsg(typeof msg === 'string' ? msg : 'Insufficient funds.')
+      toast.error(typeof msg === 'string' ? msg : 'Could not submit payment.')
     },
   })
+
+  const handleGenerateClick = (line: SessionLine) => {
+    setChargeFeedbackMsg(null)
+    if (!line.customer_self_charge_allowed) {
+      setChargeFeedbackMsg(complianceCustomerMessage(line.customer_message))
+      return
+    }
+    setPaymentModalOpen(true)
+  }
+
+  const paymentInstructions: CompliancePaymentInstructions = activeLine?.payment_instructions ?? {
+    crypto_enabled: false,
+    wire_enabled: false,
+    crypto: {},
+    wire: {},
+  }
 
   const verifyMutation = useMutation({
     mutationFn: async ({ lineId, otp }: { lineId: string; otp: string }) => {
@@ -233,11 +267,19 @@ export default function ComplianceFeesModal({
     },
   })
 
-  if (!open) return null
+  const overlayClass = anchorToMain && portalTarget?.id === 'app-main-pane'
+    ? 'absolute inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-[2px]'
+    : 'fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-[2px]'
 
-  return createPortal(
+  const headerHint = isLoan
+    ? 'Complete verification. You can close and resume later from Loans.'
+    : 'Codes are emailed for verification. Close anytime — resume from Transactions.'
+
+  if (!open || !portalTarget) return null
+
+  const compliancePortal = createPortal(
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-[2px]"
+      className={overlayClass}
       role="dialog"
       aria-modal="true"
       aria-labelledby="compliance-modal-title"
@@ -250,9 +292,7 @@ export default function ComplianceFeesModal({
           <h3 id="compliance-modal-title" className="text-base font-semibold text-gray-900">
             Compliance fees
           </h3>
-          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
-            Codes are emailed for verification. Close anytime — resume from Transactions.
-          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{headerHint}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -283,15 +323,6 @@ export default function ComplianceFeesModal({
 
               {activeLine.status === 'PENDING' ? (
                 <div className="space-y-2">
-                  {activeLine.customer_self_charge_allowed ? (
-                    <p className="text-center text-xs text-emerald-800">
-                      You can generate your verification code below.
-                    </p>
-                  ) : (
-                    <p className="text-center text-xs text-gray-500">
-                      Your bank will email a code when this fee is ready.
-                    </p>
-                  )}
                   <button
                     type="button"
                     className={cn(
@@ -300,47 +331,53 @@ export default function ComplianceFeesModal({
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
                         : 'border-gray-200 bg-gray-100 text-gray-600',
                     )}
-                    disabled={chargeMutation.isPending || lineBlocked(activeLine)}
-                    onClick={() => chargeMutation.mutate(activeLine.id)}
+                    disabled={lineBlocked(activeLine)}
+                    onClick={() => handleGenerateClick(activeLine)}
                   >
-                    {chargeMutation.isPending && chargeMutation.variables === activeLine.id ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" aria-hidden />
-                        Processing…
-                      </>
-                    ) : (
-                      <>
-                        <KeyRound size={16} aria-hidden />
-                        Generate code · {formatDisplayCurrency(activeLine.amount)}
-                      </>
-                    )}
+                    <KeyRound size={16} aria-hidden />
+                    {activeLine.customer_self_charge_allowed
+                      ? `Make payment · ${formatDisplayCurrency(activeLine.amount)}`
+                      : `Generate code · ${formatDisplayCurrency(activeLine.amount)}`}
                   </button>
-                  {chargeInsufficientMsg ? (
-                    <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-700" role="alert">
-                      {chargeInsufficientMsg}
+                  {chargeFeedbackMsg ? (
+                    <p
+                      className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-700"
+                      role="alert"
+                    >
+                      {chargeFeedbackMsg}
                     </p>
                   ) : null}
                 </div>
-              ) : activeLine.status === 'CHARGED' ? (
-                <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-800">
+              ) : activeLine.status === 'PAYMENT_SUBMITTED' ? (
+                <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-center text-xs leading-relaxed text-amber-950">
+                  Payment submitted. Your verification code will be emailed once your bank confirms receipt.
+                </p>
+              ) : activeLine.status === 'PAYMENT_CONFIRMED' ? (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs leading-relaxed text-emerald-900">
+                  Payment confirmed. Your verification code will arrive by email shortly.
+                </p>
+              ) : canEnterOtp ? (
+                <p className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
                   <Mail size={14} aria-hidden />
-                  Enter the 6-digit code from your email
+                  Verification code sent — enter the 6-digit code from your email below.
                 </p>
               ) : null}
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                 <input
+                  ref={otpInputRef}
                   className={cn(
                     'input-field w-full text-center font-mono text-base font-bold tracking-[0.35em] sm:flex-1',
-                    activeLine.status === 'CHARGED'
+                    canEnterOtp
                       ? 'border-primary-dark/20 bg-primary-dark/[0.04] ring-1 ring-primary-dark/10'
-                      : 'opacity-70',
+                      : 'cursor-not-allowed opacity-60',
                   )}
                   placeholder="······"
                   inputMode="numeric"
                   maxLength={6}
                   autoComplete="one-time-code"
-                  disabled={activeLine.status !== 'CHARGED'}
+                  disabled={!canEnterOtp}
+                  aria-disabled={!canEnterOtp}
                   value={complianceOtps[activeLine.id] ?? ''}
                   onChange={(e) =>
                     setComplianceOtps((m) => ({
@@ -353,8 +390,8 @@ export default function ComplianceFeesModal({
                   type="button"
                   className="btn-primary shrink-0 px-5 py-2.5 text-sm font-semibold sm:min-w-[7.5rem]"
                   disabled={
+                    !canEnterOtp ||
                     verifyMutation.isPending ||
-                    activeLine.status !== 'CHARGED' ||
                     (complianceOtps[activeLine.id] ?? '').length !== 6
                   }
                   onClick={() =>
@@ -403,6 +440,25 @@ export default function ComplianceFeesModal({
         </div>
       </div>
     </div>,
-    document.body,
+    portalTarget,
+  )
+
+  return (
+    <>
+      {compliancePortal}
+      {activeLine && paymentModalOpen ? (
+        <CompliancePaymentModal
+          open={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          onSubmit={(proof) => submitPaymentMutation.mutate({ lineId: activeLine.id, proof })}
+          submitting={submitPaymentMutation.isPending}
+          feeName={activeLine.name}
+          feeAmount={activeLine.amount}
+          paymentReference={activeLine.payment_reference || ''}
+          instructions={paymentInstructions}
+          anchorToMain={anchorToMain}
+        />
+      ) : null}
+    </>
   )
 }

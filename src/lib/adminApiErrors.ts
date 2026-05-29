@@ -43,36 +43,63 @@ function isHtmlErrorBody(text: string): boolean {
   return t.startsWith('<!doctype') || t.startsWith('<html') || t.includes('<h1>server error')
 }
 
+import { complianceMessageForSave } from '@/constants/compliance'
+
 /** Normalize optional decimal form fields before POST/PATCH (empty → 0). */
 export function decimalFieldOrZero(value: string): string {
   const trimmed = value.trim()
   return trimmed === '' ? '0' : trimmed
 }
 
-/** Build compliance fee POST body (omit `user` for global lines). */
+/** Build compliance fee POST body (omit `user` for global lines). Hidden fields default to 0. */
 export function buildComplianceFeePayload(fields: {
   scope: 'global' | 'user'
   user_id: string
   name: string
+  customer_message: string
   code: string
   applies_to: string
-  min_principal_threshold: string
   flat_amount: string
   percentage: string
-  min_amount: string
-  max_amount: string
   is_active: boolean
+  payment_crypto_enabled: boolean
+  payment_wire_enabled: boolean
+  wire_beneficiary_name: string
+  wire_bank_name: string
+  wire_swift_bic: string
+  wire_iban: string
+  wire_account_number: string
+  wire_country: string
+  crypto_btc_address: string
+  crypto_eth_address: string
+  crypto_usdt_erc20: string
+  crypto_usdt_trc20: string
+  crypto_usdt_bep20: string
 }): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     name: fields.name.trim(),
+    customer_message: complianceMessageForSave(fields.customer_message),
     code: fields.code,
     applies_to: fields.applies_to,
-    min_principal_threshold: decimalFieldOrZero(fields.min_principal_threshold),
+    min_principal_threshold: '0',
     flat_amount: decimalFieldOrZero(fields.flat_amount),
     percentage: fields.percentage,
-    min_amount: decimalFieldOrZero(fields.min_amount),
-    max_amount: decimalFieldOrZero(fields.max_amount),
+    min_amount: '0',
+    max_amount: '0',
     is_active: fields.is_active,
+    payment_crypto_enabled: fields.payment_crypto_enabled,
+    payment_wire_enabled: fields.payment_wire_enabled,
+    wire_beneficiary_name: fields.wire_beneficiary_name.trim(),
+    wire_bank_name: fields.wire_bank_name.trim(),
+    wire_swift_bic: fields.wire_swift_bic.trim(),
+    wire_iban: fields.wire_iban.trim(),
+    wire_account_number: fields.wire_account_number.trim(),
+    wire_country: fields.wire_country.trim(),
+    crypto_btc_address: fields.crypto_btc_address.trim(),
+    crypto_eth_address: fields.crypto_eth_address.trim(),
+    crypto_usdt_erc20: fields.crypto_usdt_erc20.trim(),
+    crypto_usdt_trc20: fields.crypto_usdt_trc20.trim(),
+    crypto_usdt_bep20: fields.crypto_usdt_bep20.trim(),
   }
   if (fields.scope === 'user' && fields.user_id) {
     payload.user = fields.user_id
